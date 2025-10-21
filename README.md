@@ -60,6 +60,7 @@
 
 **字段说明**：
 - `name` (可选)：自定义账号显示名称，用于通知和日志中标识账号
+- `provider` (可选)：供应商，内置 `anyrouter`、`agentrouter`, 默认使用 `anyrouter`
 - `cookies`(可选)：用于身份验证的 cookies 数据
 - `api_user`(cookies 设置时必需)：用于请求头的 new-api-user 参数
 - `linux.do`(可选)：用于登录身份验证
@@ -69,7 +70,20 @@
   * `username`: 用户名
   * `password`: 密码
 
-如果未提供 `name` 字段，会使用 `Account 1`、`Account 2` 等默认名称。
+> 如果未提供 `name` 字段，会使用 `Account 1`、`Account 2` 等默认名称。  
+> 配置中 `cookies`、`github`、`linux.do` 必须至少配置1个。  
+> 可通过`PROVIDERS`环境添加自定义供应商
+
+
+#### 如何获取 cookies 与 api_user 的值。
+
+通过 F12 工具，切到 Application 面板，Cookies -> session 的值，最好重新登录下，但有可能提前失效，失效后报 401 错误，到时请再重新获取。
+
+![获取 cookies](./assets/request-cookie-session.png)
+
+通过 F12 工具，切到 Application 面板，面板，Local storage -> user 对象中的id字段。
+
+![获取 api_user](./assets/request-api-user.png)
 
 ### 4. 启用 GitHub Actions
 
