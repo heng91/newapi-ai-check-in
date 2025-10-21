@@ -171,7 +171,7 @@ async def main():
     print(f'🕒 Execution time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
 
     app_config = AppConfig.load_from_env()
-    print(f"ℹ️ Loaded {len(app_config.providers)} provider configuration(s)")
+    print(f"⚙️ Loaded {len(app_config.providers)} provider configuration(s)")
 
     # 加载账号配置
     accounts = load_accounts()
@@ -179,7 +179,7 @@ async def main():
         print("❌ Unable to load account configuration, program exits")
         return 1
 
-    print(f"ℹ️ Found {len(accounts)} account configurations")
+    print(f"⚙️ Found {len(accounts)} account configurations")
 
     # 加载余额hash
     last_balance_hash = load_balance_hash()
@@ -207,7 +207,7 @@ async def main():
                 )
                 continue
 
-            print(f"ℹ️ Processing {account_name} using provider '{account.provider}'")
+            print(f"🌀 Processing {account_name} using provider '{account.provider}'")
             checkin = CheckIn(account, provider_config, i)
             results = await checkin.execute()
 
@@ -223,7 +223,7 @@ async def main():
             account_result = f"📣 {account_name} Summary:\n"
             for auth_method, success, user_info in results:
                 status = "✅ SUCCESS" if success else "❌ FAILED"
-                account_result += f"  {status} {auth_method} authentication\n"
+                account_result += f"  {status} with {auth_method} authentication\n"
 
                 if success and user_info and user_info.get("success"):
                     account_success = True
@@ -239,7 +239,7 @@ async def main():
                     }
                 else:
                     failed_methods.append(auth_method)
-                    error_msg = user_info.get("error", "Unknown error")  if user_info else "Unknown error"
+                    error_msg = user_info.get("error", "Unknown error") if user_info else "Unknown error"
                     account_result += f"    🔺 Error: {error_msg}\n"
 
             if account_success:
@@ -294,8 +294,8 @@ async def main():
         summary = [
             "-------------------------------",
             "📢 Check-in result statistics:",
-            f"✅ Success: {success_count}/{total_count}",
-            f"❌ Failed: {total_count - success_count}/{total_count}",
+            f"🔵 Success: {success_count}/{total_count}",
+            f"🔴 Failed: {total_count - success_count}/{total_count}",
         ]
 
         if success_count == total_count:
@@ -327,7 +327,7 @@ def run_main():
         print("\n⚠️ Program interrupted by user")
         sys.exit(1)
     except Exception as e:
-        print(f"\n[FAILED] Error occurred during program execution: {e}")
+        print(f"\n❌ Error occurred during program execution: {e}")
         sys.exit(1)
 
 
