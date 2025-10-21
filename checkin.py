@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 from playwright.async_api import async_playwright
 from utils.config import AccountConfig, ProviderConfig
 
+
 class CheckIn:
     """newapi.ai 签到管理类"""
 
@@ -238,7 +239,9 @@ class CheckIn:
             print(f"❌ {self.account_name}: Check-in failed - HTTP {response.status_code}")
             return False
 
-    async def check_in_with_cookies(self, cookies: dict, api_user: str | int, needs_check_in: bool | None = None) -> tuple[bool, dict | None]:
+    async def check_in_with_cookies(
+        self, cookies: dict, api_user: str | int, needs_check_in: bool | None = None
+    ) -> tuple[bool, dict | None]:
         """使用已有 cookies 执行签到操作"""
         print(f"ℹ️ {self.account_name}: Executing check-in with existing cookies")
 
@@ -390,10 +393,7 @@ class CheckIn:
                             try:
                                 print(f"ℹ️ {self.account_name}: open {oauth_url}...")
                                 # 直接访问授权页面检查是否已登录
-                                await page.goto(
-                                    oauth_url,
-                                    wait_until="networkidle",
-                                )
+                                await page.goto(oauth_url)
 
                                 # 检查是否出现授权按钮（表示已登录）
                                 authorize_btn = await page.query_selector('button[type="submit"]')
@@ -412,7 +412,7 @@ class CheckIn:
                             try:
                                 print(f"ℹ️ {self.account_name}: start to sign in GitHub...")
 
-                                await page.goto("https://github.com/login", wait_until="networkidle")
+                                await page.goto("https://github.com/login")
                                 await page.fill("#login_field", username)
                                 await page.fill("#password", password)
                                 await page.click('input[type="submit"][value="Sign in"]')
@@ -441,10 +441,7 @@ class CheckIn:
                             # 登录后访问授权页面
                             try:
                                 print(f"ℹ️ {self.account_name}: open {oauth_url}...")
-                                await page.goto(
-                                    oauth_url,
-                                    wait_until="networkidle",
-                                )
+                                await page.goto(oauth_url)
                             except Exception as e:
                                 print(f"❌ {self.account_name}: Failed to navigate to authorization page: {e}")
                                 return False, None
@@ -479,7 +476,9 @@ class CheckIn:
 
                                     # 提取 session cookie
                                     user_cookies = await page.context.cookies()
-                                    result = await self.check_in_with_cookies(user_cookies, api_user, needs_check_in=False)
+                                    result = await self.check_in_with_cookies(
+                                        user_cookies, api_user, needs_check_in=False
+                                    )
                                     return result
                                 else:
                                     print(f"❌ {self.account_name}: OAuth failed")
@@ -605,13 +604,6 @@ class CheckIn:
 
                     page = await context.new_page()
                     try:
-
-                        # print(f"ℹ️ {self.account_name}: goto linux.do...")
-                        # await page.goto(
-                        #     f"https://connect.linux.do/oauth2/authorize?response_type=code&client_id={client_id['client_id']}&state={auth_state['auth_data']}",
-                        # )
-                        # await page.wait_for_function('document.readyState === "complete"', timeout=5000)
-
                         # 检查是否已经登录（通过缓存恢复）
                         is_logged_in = False
                         oauth_url = f"https://connect.linux.do/oauth2/authorize?response_type=code&client_id={client_id['client_id']}&state={auth_state['auth_data']}"
@@ -619,10 +611,7 @@ class CheckIn:
                             try:
                                 print(f"ℹ️ {self.account_name}: open {oauth_url}...")
                                 # 直接访问授权页面检查是否已登录
-                                await page.goto(
-                                    oauth_url,
-                                    wait_until="networkidle",
-                                )
+                                await page.goto(oauth_url)
 
                                 # 检查是否出现授权按钮（表示已登录）
                                 allow_btn = await page.query_selector('a[href^="/oauth2/approve"]')
@@ -641,7 +630,7 @@ class CheckIn:
                             try:
                                 print(f"ℹ️ {self.account_name}: start to sign in linux.do...")
 
-                                await page.goto("https://linux.do/login", wait_until="networkidle")
+                                await page.goto("https://linux.do/login")
                                 await page.fill("#login-account-name", username)
                                 await page.fill("#login-account-password", password)
                                 await page.click("#login-button")
@@ -658,10 +647,7 @@ class CheckIn:
                             # 登录后访问授权页面
                             try:
                                 print(f"ℹ️ {self.account_name}: open {oauth_url}...")
-                                await page.goto(
-                                    oauth_url,
-                                    wait_until="networkidle",
-                                )
+                                await page.goto(oauth_url)
                             except Exception as e:
                                 print(f"❌ {self.account_name}: Failed to navigate to authorization page: {e}")
                                 return False, None
@@ -703,7 +689,9 @@ class CheckIn:
                                         if cookie_name and cookie_value:
                                             user_cookies[cookie_name] = cookie_value
                                     all_cookies = {**waf_cookies, **user_cookies}
-                                    result = await self.check_in_with_cookies(all_cookies, api_user, needs_check_in=False)
+                                    result = await self.check_in_with_cookies(
+                                        all_cookies, api_user, needs_check_in=False
+                                    )
                                     return result
                                 else:
                                     print(f"❌ {self.account_name}: OAuth failed")
