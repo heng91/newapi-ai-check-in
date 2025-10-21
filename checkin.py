@@ -393,7 +393,7 @@ class CheckIn:
                             try:
                                 print(f"ℹ️ {self.account_name}: open {oauth_url}...")
                                 # 直接访问授权页面检查是否已登录
-                                await page.goto(oauth_url)
+                                await page.goto(oauth_url, wait_until="domcontentloaded")
 
                                 # 检查是否出现授权按钮（表示已登录）
                                 authorize_btn = await page.query_selector('button[type="submit"]')
@@ -412,7 +412,7 @@ class CheckIn:
                             try:
                                 print(f"ℹ️ {self.account_name}: start to sign in GitHub...")
 
-                                await page.goto("https://github.com/login")
+                                await page.goto("https://github.com/login", wait_until="domcontentloaded")
                                 await page.fill("#login_field", username)
                                 await page.fill("#password", password)
                                 await page.click('input[type="submit"][value="Sign in"]')
@@ -441,7 +441,7 @@ class CheckIn:
                             # 登录后访问授权页面
                             try:
                                 print(f"ℹ️ {self.account_name}: open {oauth_url}...")
-                                await page.goto(oauth_url)
+                                await page.goto(oauth_url, wait_until="domcontentloaded")
                             except Exception as e:
                                 print(f"❌ {self.account_name}: Failed to navigate to authorization page: {e}")
                                 return False, None
@@ -611,7 +611,7 @@ class CheckIn:
                             try:
                                 print(f"ℹ️ {self.account_name}: open {oauth_url}...")
                                 # 直接访问授权页面检查是否已登录
-                                await page.goto(oauth_url)
+                                await page.goto(oauth_url, wait_until="domcontentloaded")
 
                                 # 检查是否出现授权按钮（表示已登录）
                                 allow_btn = await page.query_selector('a[href^="/oauth2/approve"]')
@@ -630,7 +630,7 @@ class CheckIn:
                             try:
                                 print(f"ℹ️ {self.account_name}: start to sign in linux.do...")
 
-                                await page.goto("https://linux.do/login")
+                                await page.goto("https://linux.do/login", wait_until="domcontentloaded")
                                 await page.fill("#login-account-name", username)
                                 await page.fill("#login-account-password", password)
                                 await page.click("#login-button")
@@ -647,7 +647,7 @@ class CheckIn:
                             # 登录后访问授权页面
                             try:
                                 print(f"ℹ️ {self.account_name}: open {oauth_url}...")
-                                await page.goto(oauth_url)
+                                await page.goto(oauth_url, wait_until="domcontentloaded")
                             except Exception as e:
                                 print(f"❌ {self.account_name}: Failed to navigate to authorization page: {e}")
                                 return False, None
