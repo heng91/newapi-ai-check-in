@@ -416,7 +416,7 @@ class CheckIn:
                                 await page.fill("#login_field", username)
                                 await page.fill("#password", password)
                                 await page.click('input[type="submit"][value="Sign in"]')
-                                await page.wait_for_load_state("networkidle")
+                                await page.wait_for_timeout(10000)
 
                                 # 处理两步验证（如果需要）
                                 try:
@@ -634,7 +634,7 @@ class CheckIn:
                                 await page.fill("#login-account-name", username)
                                 await page.fill("#login-account-password", password)
                                 await page.click("#login-button")
-                                await page.wait_for_load_state("networkidle")
+                                await page.wait_for_timeout(10000)
 
                                 # 保存新的会话状态
                                 os.makedirs("caches", exist_ok=True)
