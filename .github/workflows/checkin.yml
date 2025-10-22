@@ -6,6 +6,8 @@ on:
 
 jobs:
   checkin:
+    permissions:
+      id-token: write
     runs-on: windows-2025
     environment: production
     env:
