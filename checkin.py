@@ -4,6 +4,7 @@ CheckIn 类
 """
 
 import json
+import hashlib
 import os
 import tempfile
 import httpx
@@ -46,7 +47,7 @@ class CheckIn:
 
     async def get_waf_cookies_with_playwright(self) -> dict | None:
         """使用 Playwright 获取 WAF cookies（隐私模式）"""
-        print(f"ℹ️ {self.account_name}: Starting browser to get WAF cookies...")
+        print(f"ℹ️ {self.account_name}: Starting browser to get WAF cookies")
 
         async with async_playwright() as p:
 
@@ -68,7 +69,7 @@ class CheckIn:
                 page = await context.new_page()
 
                 try:
-                    print(f"ℹ️ {self.account_name}: Access login page to get initial cookies...")
+                    print(f"ℹ️ {self.account_name}: Access login page to get initial cookies")
                     await page.goto(self.provider_config.get_login_url(), wait_until="networkidle")
 
                     try:
@@ -133,7 +134,7 @@ class CheckIn:
         except Exception as e:
             return {
                 "success": False,
-                "error": f"Failed to get client id: {str(e)[:50]}...",
+                "error": f"Failed to get client id: {e}",
             }
 
     def get_auth_state(self, client: httpx.Client, headers: dict) -> dict:
@@ -152,7 +153,9 @@ class CheckIn:
                         parsed_domain = urlparse(self.provider_config.origin).netloc
 
                         for cookie in response.cookies.jar:
-                            print(f"ℹ️ Cookie: {cookie.name}, Domain: {cookie.domain}")
+                            http_only = cookie.httponly if cookie.has_nonstandard_attr("httponly") else False
+                            same_site = cookie.samesite if cookie.has_nonstandard_attr("samesite") else "Lax"
+                            print(f"ℹ️ Cookie: {cookie.name}, Domain: {cookie.domain}, Path: {cookie.path}, Expires: {cookie.expires}, HttpOnly: {http_only}, Secure: {cookie.secure}, SameSite: {same_site}")
                             playwright_cookies.append(
                                 {
                                     "name": cookie.name,
@@ -161,6 +164,8 @@ class CheckIn:
                                     "path": cookie.path,
                                     "expires": cookie.expires,
                                     "secure": cookie.secure,
+                                    "httpOnly": http_only,
+                                    "sameSite": same_site,
                                 }
                             )
 
@@ -176,7 +181,7 @@ class CheckIn:
         except Exception as e:
             return {
                 "success": False,
-                "error": f"Failed to get auth state: {str(e)[:50]}...",
+                "error": f"Failed to get auth state: {e}",
             }
 
     def get_user_info(self, client: httpx.Client, headers: dict) -> dict:
@@ -203,7 +208,7 @@ class CheckIn:
         except Exception as e:
             return {
                 "success": False,
-                "error": f"Failed to get user info: {str(e)[:50]}...",
+                "error": f"Failed to get user info: {e}",
             }
 
     def execute_check_in(self, client, headers: dict):
@@ -241,7 +246,7 @@ class CheckIn:
 
     async def check_in_with_cookies(
         self, cookies: dict, api_user: str | int, needs_check_in: bool | None = None
-    ) -> tuple[bool, dict | None]:
+    ) -> tuple[bool, dict]:
         """使用已有 cookies 执行签到操作"""
         print(f"ℹ️ {self.account_name}: Executing check-in with existing cookies")
 
@@ -270,22 +275,24 @@ class CheckIn:
             elif user_info:
                 error_msg = user_info.get("error", "Unknown error")
                 print(f"❌ {self.account_name}: {error_msg}")
-                return False, None
+                return False, {"error": "Failed to get user info"}
 
             if needs_check_in is None and self.provider_config.needs_manual_check_in():
                 success = self.execute_check_in(client, headers)
-                return success, user_info
+                return success, user_info if user_info else {"error": "No user info available"}
             else:
                 print(f"ℹ️ {self.account_name}: Check-in completed automatically (triggered by user info request)")
-                return True, user_info
+                return True, user_info if user_info else {"error": "No user info available"}
 
         except Exception as e:
-            print(f"❌ {self.account_name}: Error occurred during check-in process - {str(e)[:50]}...")
-            return False, None
+            print(f"❌ {self.account_name}: Error occurred during check-in process - {e}")
+            return False, {"error": "Error occurred during check-in process"}
         finally:
             client.close()
 
-    async def check_in_with_github(self, username: str, password: str, waf_cookies: dict) -> tuple[bool, dict | None]:
+    async def check_in_with_github(
+        self, username: str, password: str, waf_cookies: dict, cache_dir: str = ""
+    ) -> tuple[bool, dict]:
         """使用 GitHub 账号执行签到操作"""
         print(f"ℹ️ {self.account_name}: Executing check-in with GitHub account")
 
@@ -293,7 +300,8 @@ class CheckIn:
         try:
             client.cookies.update(waf_cookies)
 
-            cache_file_path = f"caches/github_{username}_storage_state.json"
+            username_hash = hashlib.sha256(username.encode("utf-8")).hexdigest()[:8]
+            cache_file_path = f"{cache_dir}/github_{username_hash}_storage_state.json"
             headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
                 "Accept": "application/json, text/plain, */*",
@@ -314,7 +322,7 @@ class CheckIn:
             else:
                 error_msg = client_id.get("error", "Unknown error")
                 print(f"❌ {self.account_name}: {error_msg}")
-                return False, None
+                return False, {"error": "Failed to get GitHub client ID"}
 
             auth_state = self.get_auth_state(client, headers)
             if auth_state and auth_state.get("success"):
@@ -322,7 +330,7 @@ class CheckIn:
             else:
                 error_msg = auth_state.get("error", "Unknown error")
                 print(f"❌ {self.account_name}: {error_msg}")
-                return False, None
+                return False, {"error": "Failed to get GitHub auth state"}
 
             async with async_playwright() as p:
 
@@ -358,6 +366,10 @@ class CheckIn:
                                             "value": cookie["value"],
                                             "domain": cookie.get("domain", parsed_domain),
                                             "path": cookie.get("path", "/"),
+                                            "expires": cookie.get("expires"),
+                                            "httpOnly": cookie.get("httpOnly", False),
+                                            "secure": cookie.get("secure", False),
+                                            "sameSite": cookie.get("sameSite", "Lax"),
                                         }
                                         playwright_cookies.append(cookie_data)
 
@@ -391,26 +403,35 @@ class CheckIn:
                         oauth_url = f"https://github.com/login/oauth/authorize?response_type=code&client_id={client_id['client_id']}&state={auth_state['auth_data']}&scope=user:email"
                         if os.path.exists(cache_file_path):
                             try:
-                                print(f"ℹ️ {self.account_name}: open {oauth_url}...")
+                                print(f"ℹ️ {self.account_name}: open {oauth_url}")
                                 # 直接访问授权页面检查是否已登录
-                                await page.goto(oauth_url, wait_until="domcontentloaded")
-
-                                # 检查是否出现授权按钮（表示已登录）
-                                authorize_btn = await page.query_selector('button[type="submit"]')
-                                if authorize_btn:
+                                response = await page.goto(oauth_url, wait_until="domcontentloaded")
+                                print(f"ℹ️ {self.account_name}: redirected to app page {response.url if response else 'N/A'}")
+                                
+                                # GitHub 登录后可能直接跳转回应用页面
+                                if response and response.url.startswith(self.provider_config.origin):
                                     is_logged_in = True
                                     print(
                                         f"✅ {self.account_name}: Already logged in via cache, proceeding to authorization"
                                     )
                                 else:
-                                    print(f"ℹ️ {self.account_name}: Cache session expired, need to login again")
+                                    # 检查是否出现授权按钮（表示已登录）
+                                    authorize_btn = await page.query_selector('button[type="submit"]')
+                                    if authorize_btn:
+                                        is_logged_in = True
+                                        print(
+                                            f"✅ {self.account_name}: Already logged in via cache, proceeding to authorization"
+                                        )
+                                        await authorize_btn.click()
+                                    else:
+                                        print(f"ℹ️ {self.account_name}: Approve button not found, need to login again")
                             except Exception as e:
                                 print(f"⚠️ {self.account_name}: Failed to check login status: {e}")
 
                         # 如果未登录，则执行登录流程
                         if not is_logged_in:
                             try:
-                                print(f"ℹ️ {self.account_name}: start to sign in GitHub...")
+                                print(f"ℹ️ {self.account_name}: start to sign in GitHub")
 
                                 await page.goto("https://github.com/login", wait_until="domcontentloaded")
                                 await page.fill("#login_field", username)
@@ -431,79 +452,96 @@ class CheckIn:
                                     pass
 
                                 # 保存新的会话状态
-                                os.makedirs("caches", exist_ok=True)
                                 await context.storage_state(path=cache_file_path)
 
                             except Exception as e:
                                 print(f"❌ {self.account_name}: Error occurred while signing in GitHub: {e}")
-                                return False, None
+                                return False, {"error": "GitHub sign-in error"}
 
                             # 登录后访问授权页面
                             try:
-                                print(f"ℹ️ {self.account_name}: open {oauth_url}...")
-                                await page.goto(oauth_url, wait_until="domcontentloaded")
+                                print(f"ℹ️ {self.account_name}: open {oauth_url}")
+                                response = await page.goto(oauth_url, wait_until="domcontentloaded")
+                                print(f"ℹ️ {self.account_name}: redirected to app page {response.url if response else 'N/A'}")
+                                
+                                # GitHub 登录后可能直接跳转回应用页面
+                                if response and response.url.startswith(self.provider_config.origin):
+                                    print(f"✅ {self.account_name}: logged in, proceeding to authorization")
+                                else:
+                                       # 检查是否出现授权按钮（表示已登录）
+                                    authorize_btn = await page.query_selector('button[type="submit"]')
+                                    if authorize_btn:
+                                        is_logged_in = True
+                                        print(
+                                            f"✅ {self.account_name}: Already logged in via cache, proceeding to authorization"
+                                        )
+                                        await authorize_btn.click()
+                                    else:
+                                        print(f"ℹ️ {self.account_name}: Approve button not found")
                             except Exception as e:
-                                print(f"❌ {self.account_name}: Failed to navigate to authorization page: {e}")
-                                return False, None
+                                print(f"❌ {self.account_name}: Error occurred while authorization approve: {e}")
+                                return False, {"error": "GitHub authorization approval failed"}
 
                         # 统一处理授权逻辑（无论是否通过缓存登录）
                         try:
-                            # 等待授权按钮出现，最多等待5秒
-                            await page.wait_for_selector('button[type="submit"]', timeout=5000)
-                            authorize_btn_ele = await page.query_selector('button[type="submit"]')
-                            if authorize_btn_ele:
-                                await authorize_btn_ele.click()
-                                await page.wait_for_timeout(10000)
-
-                                # 从 localStorage 获取 user 对象并提取 id
-                                api_user = None
-                                try:
-                                    user_data = await page.evaluate("() => localStorage.getItem('user')")
-                                    if user_data:
-                                        user_obj = json.loads(user_data)
-                                        api_user = user_obj.get("id")
-                                        if api_user:
-                                            print(f"✅ {self.account_name}: Got api user: {api_user}")
-                                        else:
-                                            print(f"⚠️ {self.account_name}: User id not found in localStorage")
+                            await page.wait_for_url(f"**{self.provider_config.origin}/oauth/**", timeout=5000)
+                            
+                            # 从 localStorage 获取 user 对象并提取 id
+                            api_user = None
+                            try:
+                                # 等待5秒, 登录完成后 localStorage 可能需要时间更新
+                                await page.wait_for_timeout(5000)
+                                user_data = await page.evaluate("() => localStorage.getItem('user')")
+                                if user_data:
+                                    user_obj = json.loads(user_data)
+                                    api_user = user_obj.get("id")
+                                    if api_user:
+                                        print(f"✅ {self.account_name}: Got api user: {api_user}")
                                     else:
-                                        print(f"⚠️ {self.account_name}: User data not found in localStorage")
-                                except Exception as e:
-                                    print(f"⚠️ {self.account_name}: Error reading user from localStorage: {e}")
-
-                                if api_user:
-                                    print(f"✅ {self.account_name}: OAuth authorization successful")
-
-                                    # 提取 session cookie
-                                    user_cookies = await page.context.cookies()
-                                    result = await self.check_in_with_cookies(
-                                        user_cookies, api_user, needs_check_in=False
-                                    )
-                                    return result
+                                        print(f"⚠️ {self.account_name}: User id not found in localStorage")
                                 else:
-                                    print(f"❌ {self.account_name}: OAuth failed")
-                                    return False, None
+                                    print(f"⚠️ {self.account_name}: User data not found in localStorage")
+                            except Exception as e:
+                                print(f"⚠️ {self.account_name}: Error reading user from localStorage: {e}")
+
+                            if api_user:
+                                print(f"✅ {self.account_name}: OAuth authorization successful")
+
+                                # 提取 session cookie
+                                cookies = await page.context.cookies()
+                                user_cookies = {}
+                                for cookie in cookies:
+                                    cookie_name = cookie.get("name")
+                                    cookie_value = cookie.get("value")
+                                    if cookie_name and cookie_value:
+                                        user_cookies[cookie_name] = cookie_value
+                                all_cookies = {**waf_cookies, **user_cookies}
+                                result = await self.check_in_with_cookies(all_cookies, api_user, needs_check_in=False)
+                                return result
                             else:
-                                print(f"❌ {self.account_name}: Authorize button not found")
-                                return False, None
+                                print(f"❌ {self.account_name}: OAuth failed")
+                                return False, {"error": "GitHub OAuth failed - no user ID found"}
+
                         except Exception as e:
-                            print(f"❌ {self.account_name}: Error occurred while authorization approve: {e}")
-                            return False, None
+                            print(f"❌ {self.account_name}: Error occurred while authorization redirecting: {e}")
+                            return False, {"error": "GitHub authorization redirecting failed"}
                     except Exception as e:
                         print(f"❌ {self.account_name}: Error occurred while signing in GitHub: {e}")
-                        return False, None
+                        return False, {"error": "GitHub sign-in process error"}
                     except Exception as e:
                         print(f"❌ {self.account_name}: Error occurred while goto GitHub page: {e}")
-                        return False, None
+                        return False, {"error": "GitHub page navigation error"}
                     finally:
                         await page.close()
                         await context.close()
 
         except Exception as e:
             print(f"❌ {self.account_name}: Error occurred during check-in process - {e}")
-            return False, None
+            return False, {"error": "GitHub check-in process error"}
 
-    async def check_in_with_linuxdo(self, username: str, password: str, waf_cookies: dict) -> tuple[bool, dict | None]:
+    async def check_in_with_linuxdo(
+        self, username: str, password: str, waf_cookies: dict, cache_dir: str = ""
+    ) -> tuple[bool, dict]:
         """使用 Linux.do 账号执行签到操作"""
         print(f"ℹ️ {self.account_name}: Executing check-in with Linux.do account")
 
@@ -511,7 +549,8 @@ class CheckIn:
         try:
             client.cookies.update(waf_cookies)
 
-            cache_file_path = f"caches/linuxdo_{username}_storage_state.json"
+            username_hash = hashlib.sha256(username.encode("utf-8")).hexdigest()[:8]
+            cache_file_path = f"{cache_dir}/linuxdo_{username_hash}_storage_state.json"
             headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
                 "Accept": "application/json, text/plain, */*",
@@ -532,7 +571,7 @@ class CheckIn:
             else:
                 error_msg = client_id.get("error", "Unknown error")
                 print(f"❌ {self.account_name}: {error_msg}")
-                return False, None
+                return False, {"error": "Failed to get Linux.do client ID"}
 
             auth_state = self.get_auth_state(client, headers)
             if auth_state and auth_state.get("success"):
@@ -540,7 +579,7 @@ class CheckIn:
             else:
                 error_msg = auth_state.get("error", "Unknown error")
                 print(f"❌ {self.account_name}: {error_msg}")
-                return False, None
+                return False, {"error": "Failed to get Linux.do auth state"}
 
             async with async_playwright() as p:
 
@@ -576,6 +615,10 @@ class CheckIn:
                                             "value": cookie["value"],
                                             "domain": cookie.get("domain", parsed_domain),
                                             "path": cookie.get("path", "/"),
+                                            "expires": cookie.get("expires"),
+                                            "httpOnly": cookie.get("httpOnly", False),
+                                            "secure": cookie.get("secure", False),
+                                            "sameSite": cookie.get("sameSite", "Lax"),
                                         }
                                         playwright_cookies.append(cookie_data)
 
@@ -609,9 +652,10 @@ class CheckIn:
                         oauth_url = f"https://connect.linux.do/oauth2/authorize?response_type=code&client_id={client_id['client_id']}&state={auth_state['auth_data']}"
                         if os.path.exists(cache_file_path):
                             try:
-                                print(f"ℹ️ {self.account_name}: open {oauth_url}...")
+                                print(f"ℹ️ {self.account_name}: open {oauth_url}")
                                 # 直接访问授权页面检查是否已登录
                                 await page.goto(oauth_url, wait_until="domcontentloaded")
+                                
 
                                 # 检查是否出现授权按钮（表示已登录）
                                 allow_btn = await page.query_selector('a[href^="/oauth2/approve"]')
@@ -628,7 +672,7 @@ class CheckIn:
                         # 如果未登录，则执行登录流程
                         if not is_logged_in:
                             try:
-                                print(f"ℹ️ {self.account_name}: start to sign in linux.do...")
+                                print(f"ℹ️ {self.account_name}: start to sign in linux.do")
 
                                 await page.goto("https://linux.do/login", wait_until="domcontentloaded")
                                 await page.fill("#login-account-name", username)
@@ -637,20 +681,19 @@ class CheckIn:
                                 await page.wait_for_timeout(10000)
 
                                 # 保存新的会话状态
-                                os.makedirs("caches", exist_ok=True)
                                 await context.storage_state(path=cache_file_path)
 
                             except Exception as e:
                                 print(f"❌ {self.account_name}: Error occurred while signing in linux.do: {e}")
-                                return False, None
+                                return False, {"error": "Linux.do sign-in error"}
 
                             # 登录后访问授权页面
                             try:
-                                print(f"ℹ️ {self.account_name}: open {oauth_url}...")
+                                print(f"ℹ️ {self.account_name}: open {oauth_url}")
                                 await page.goto(oauth_url, wait_until="domcontentloaded")
                             except Exception as e:
                                 print(f"❌ {self.account_name}: Failed to navigate to authorization page: {e}")
-                                return False, None
+                                return False, {"error": "Linux.do authorization page navigation failed"}
 
                         # 统一处理授权逻辑（无论是否通过缓存登录）
                         try:
@@ -659,11 +702,13 @@ class CheckIn:
                             allow_btn_ele = await page.query_selector('a[href^="/oauth2/approve"]')
                             if allow_btn_ele:
                                 await allow_btn_ele.click()
-                                await page.wait_for_timeout(10000)
+                                await page.wait_for_url(f"**{self.provider_config.origin}/oauth/**", timeout=5000)
 
                                 # 从 localStorage 获取 user 对象并提取 id
                                 api_user = None
                                 try:
+                                    # 等待5秒, 登录完成后 localStorage 可能需要时间更新
+                                    await page.wait_for_timeout(5000)
                                     user_data = await page.evaluate("() => localStorage.getItem('user')")
                                     if user_data:
                                         user_obj = json.loads(user_data)
@@ -695,23 +740,23 @@ class CheckIn:
                                     return result
                                 else:
                                     print(f"❌ {self.account_name}: OAuth failed")
-                                    return False, None
+                                    return False, {"error": "Linux.do OAuth failed - no user ID found"}
                             else:
-                                print(f"❌ {self.account_name}: Allow button not found")
-                                return False, None
+                                print(f"❌ {self.account_name}: Approve button not found")
+                                return False, {"error": "Linux.do allow button not found"}
                         except Exception as e:
                             print(f"❌ {self.account_name}: Error occurred while signing in linux.do: {e}")
-                            return False, None
+                            return False, {"error": "Linux.do authorization failed"}
                     except Exception as e:
                         print(f"❌ {self.account_name}: Error occurred while goto linux.do page: {e}")
-                        return False, None
+                        return False, {"error": "Linux.do page navigation error"}
                     finally:
                         await page.close()
                         await context.close()
 
         except Exception as e:
             print(f"❌ {self.account_name}: Error occurred during check-in process - {e}")
-            return False, None
+            return False, {"error": "Linux.do check-in process error"}
 
     async def execute(self) -> list[tuple[str, bool, dict | None]]:
         """为单个账号执行签到操作，支持多种认证方式"""
@@ -727,6 +772,9 @@ class CheckIn:
         else:
             print(f"ℹ️ {self.account_name}: Bypass WAF not required, using user cookies directly")
 
+        cache_dir = "caches"
+        os.makedirs(cache_dir, exist_ok=True)
+
         # 解析账号配置
         cookies_data = self.account_info.cookies
         github_info = self.account_info.github
@@ -735,7 +783,7 @@ class CheckIn:
 
         # 尝试 cookies 认证
         if cookies_data:
-            print(f"\nℹ️ {self.account_name}: Trying cookies authentication...")
+            print(f"\nℹ️ {self.account_name}: Trying cookies authentication")
             try:
                 user_cookies = self.parse_cookies(cookies_data)
                 if not user_cookies:
@@ -762,7 +810,7 @@ class CheckIn:
 
         # 尝试 GitHub 认证
         if github_info:
-            print(f"\nℹ️ {self.account_name}: Trying GitHub authentication...")
+            print(f"\nℹ️ {self.account_name}: Trying GitHub authentication")
             try:
                 username = github_info.get("username")
                 password = github_info.get("password")
@@ -771,7 +819,7 @@ class CheckIn:
                     results.append(("github", False, {"error": "Incomplete GitHub account information"}))
                 else:
                     # 使用 GitHub 账号执行签到
-                    success, user_info = await self.check_in_with_github(username, password, waf_cookies)
+                    success, user_info = await self.check_in_with_github(username, password, waf_cookies, cache_dir)
                     if success:
                         print(f"✅ {self.account_name}: GitHub authentication successful")
                         results.append(("github", True, user_info))
@@ -784,7 +832,7 @@ class CheckIn:
 
         # 尝试 Linux.do 认证
         if linuxdo_info:
-            print(f"\nℹ️ {self.account_name}: Trying Linux.do authentication...")
+            print(f"\nℹ️ {self.account_name}: Trying Linux.do authentication")
             try:
                 username = linuxdo_info.get("username")
                 password = linuxdo_info.get("password")
@@ -793,7 +841,7 @@ class CheckIn:
                     results.append(("linux.do", False, {"error": "Incomplete Linux.do account information"}))
                 else:
                     # 使用 Linux.do 账号执行签到
-                    success, user_info = await self.check_in_with_linuxdo(username, password, waf_cookies)
+                    success, user_info = await self.check_in_with_linuxdo(username, password, waf_cookies, cache_dir)
                     if success:
                         print(f"✅ {self.account_name}: Linux.do authentication successful")
                         results.append(("linux.do", True, user_info))

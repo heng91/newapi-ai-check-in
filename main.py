@@ -240,7 +240,7 @@ async def main():
                 else:
                     failed_methods.append(auth_method)
                     error_msg = user_info.get("error", "Unknown error") if user_info else "Unknown error"
-                    account_result += f"    🔺 Error: {error_msg}\n"
+                    account_result += f"    🔺 Error: {str(error_msg)[:50]}...\n"
 
             if account_success:
                 current_balances[account_key] = this_account_balances
