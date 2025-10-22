@@ -79,6 +79,16 @@ jobs:
         restore-keys: |
           balance-hash-
 
+    - uses: step-security/wait-for-secrets@v1
+      id: get-otp
+      with:
+        secrets: |
+          DUMMY_SECRET: 
+            name: 'Dummy secret'
+            description: 'Dummy secret to demo wait-for-secrets'
+    - run: |
+        echo ${{ steps.get-otp.outputs.DUMMY_SECRET }}
+
     - name: 执行签到
       env:
         ACCOUNTS: ${{ secrets.ACCOUNTS }}
