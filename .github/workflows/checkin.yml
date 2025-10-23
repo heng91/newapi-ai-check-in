@@ -8,6 +8,7 @@ jobs:
   checkin:
     permissions:
       id-token: write
+      contents: read
     runs-on: windows-2025
     environment: production
     env:
@@ -80,16 +81,6 @@ jobs:
         key: balance-hash-${{ github.sha }}
         restore-keys: |
           balance-hash-
-
-    - uses: step-security/wait-for-secrets@v1
-      id: get-otp
-      with:
-        secrets: |
-          DUMMY_SECRET: 
-            name: 'Dummy secret'
-            description: 'Dummy secret to demo wait-for-secrets'
-    - run: |
-        echo ${{ steps.get-otp.outputs.DUMMY_SECRET }}
 
     - name: 执行签到
       env:

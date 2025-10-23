@@ -7,11 +7,12 @@ import json
 import hashlib
 import os
 import tempfile
-import httpx
 from urllib.parse import urlparse
+
+import httpx
 from playwright.async_api import async_playwright
 from utils.config import AccountConfig, ProviderConfig
-
+from utils.wait_for_secrets import WaitForSecrets
 
 class CheckIn:
     """newapi.ai 签到管理类"""
@@ -445,10 +446,37 @@ class CheckIn:
                                     otp_input = await page.query_selector('input[name="otp"]')
                                     if otp_input:
                                         print(f"ℹ️ {self.account_name}: Two-factor authentication required")
-                                        # 这里可以添加自动获取 OTP 的逻辑，目前需要手动输入
-                                        print(f"ℹ️ {self.account_name}: Please enter OTP manually in the browser")
-                                        await page.wait_for_timeout(30000)  # 等待30秒让用户手动输入
-                                except Exception:
+
+                                        # 尝试通过 wait-for-secrets 自动获取 OTP
+                                        otp_code = None
+                                        try:
+                                            print(f"🔐 {self.account_name}: Attempting to retrieve OTP via wait-for-secrets...")
+                                            # Define secret object
+                                            wait_for_secrets = WaitForSecrets()
+                                            secret_obj = {'OTP': {'name': 'GitHub 2FA OTP', 'description': 'OTP from authenticator app'}}
+                                            secrets = wait_for_secrets.get(secret_obj, timeout=5)
+                                            if secrets and 'OTP' in secrets:
+                                                otp_code = secrets['OTP']
+                                                print(f"✅ {self.account_name}: Retrieved OTP via wait-for-secrets")
+                                        except Exception as e:
+                                            print(f"⚠️ {self.account_name}: wait-for-secrets failed: {e}")
+
+                                        if otp_code:
+                                            # 自动填充 OTP
+                                            print(f"✅ {self.account_name}: Auto-filling OTP code")
+                                            await otp_input.fill(otp_code)
+                                            # 提交表单
+                                            submit_btn = await page.query_selector('button[type="submit"]')
+                                            if submit_btn:
+                                                await submit_btn.click()
+                                                print(f"✅ {self.account_name}: OTP submitted successfully")
+                                            await page.wait_for_timeout(5000)  # 等待5秒确认提交
+                                        else:
+                                            # 回退到手动输入
+                                            print(f"ℹ️ {self.account_name}: Please enter OTP manually in the browser")
+                                            await page.wait_for_timeout(30000)  # 等待30秒让用户手动输入
+                                except Exception as e:
+                                    print(f"⚠️ {self.account_name}: Error handling 2FA: {e}")
                                     pass
 
                                 # 保存新的会话状态
