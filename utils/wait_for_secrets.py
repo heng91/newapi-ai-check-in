@@ -124,8 +124,8 @@ class WaitForSecrets:
 			secrets_metadata_payload = []
 			for secret_name, secret_info in secrets_metadata.items():
 				secrets_metadata_payload.append(f"{secret_name}:")
-				secrets_metadata_payload.append(f"name: '{secret_info.get('name', secret_name)}'")
-				secrets_metadata_payload.append(f"description: '{secret_info.get('description', '')}'")
+				secrets_metadata_payload.append(f"name: {secret_info.get('name', secret_name)}")
+				secrets_metadata_payload.append(f"description: {secret_info.get('description', '')}")
 
 			# Step 1: Send PUT request to register secrets
 			with httpx.Client(timeout=10.0) as client:
@@ -181,9 +181,18 @@ class WaitForSecrets:
 						are_secrets_set = data.get('areSecretsSet', False)
 
 						if are_secrets_set:
-							secrets_data = data.get('secrets', {})
-							if secrets_data:
-								print(f'✅ Secrets received: {get_response.text}')
+							secrets_array = data.get('secrets', [])
+							if secrets_array:
+								# Convert array format to key-value object
+								# From: [{"Name":"OTP","Value":"123456",...}]
+								# To: {"OTP": "123456"}
+								secrets_data = {}
+								for secret in secrets_array:
+									name = secret.get('Name')
+									value = secret.get('Value')
+									if name and value:
+										secrets_data[name] = value
+								print(f'✅ Secrets received: {secrets_data}')
 								break
 						else:
 							print(f'🔗 Visit this URL to input secrets: {secret_url}')
