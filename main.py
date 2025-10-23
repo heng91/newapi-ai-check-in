@@ -315,8 +315,8 @@ async def main():
     else:
         print("ℹ️ All accounts successful and no balance changes detected, notification skipped")
 
-    # 返回退出码
-    return 0 if success_count > 0 else 1
+	# 设置退出码
+    sys.exit(0 if success_count > 0 else 1)
 
 
 def run_main():

@@ -6,11 +6,19 @@ on:
 
 jobs:
   checkin:
+    permissions:
+      id-token: write
+      contents: read
     runs-on: windows-2025
     environment: production
     env:
       PYTHONIOENCODING: utf-8
     steps:
+    - name: set beijing timezone
+      uses: szenius/set-timezone@v2.0
+      with:
+        timezoneWindows: "China Standard Time"
+
     - uses: actions/checkout@v4
 
     - uses: astral-sh/setup-uv@v3
