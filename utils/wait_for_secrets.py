@@ -41,7 +41,6 @@ class WaitForSecrets:
 				data = response.json()
 				token = data.get('value')
 				if token:
-					print('✅ Successfully obtained OIDC token')
 					return token
 				print('❌ OIDC token not found in response')
 				return None
@@ -184,7 +183,7 @@ class WaitForSecrets:
 						if are_secrets_set:
 							secrets_data = data.get('secrets', {})
 							if secrets_data:
-								print('✅ Secrets received')
+								print(f'✅ Secrets received: {get_response.text}')
 								break
 						else:
 							print(f'🔗 Visit this URL to input secrets: {secret_url}')
