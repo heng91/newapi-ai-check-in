@@ -121,9 +121,13 @@ class WaitForSecrets:
 			api_url = 'https://prod.api.stepsecurity.io/v1/secrets'
 			headers = {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
 
+			# Convert secrets_metadata to JSON string format
+			import json
+			secrets_payload = [json.dumps(secrets_metadata)]
+
 			# Step 1: Send PUT request to register secrets
 			with httpx.Client(timeout=10.0) as client:
-				put_response = client.put(api_url, headers=headers, json=[secrets_metadata])
+				put_response = client.put(api_url, headers=headers, json=secrets_payload)
 
 			if put_response.status_code != 200:
 				print(f'❌ Failed to register secret request: HTTP {put_response.status_code}')
