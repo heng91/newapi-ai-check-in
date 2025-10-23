@@ -135,11 +135,7 @@ class WaitForSecrets:
 				print(f'❌ Failed to register secret request: HTTP {put_response.status_code}, {put_response.text}')
 				return None
 
-			timeout_in_seconds = timeout * 60  # Convert minutes to seconds
-
 			print('✅ Secret request registered')
-			print(f'⏳ Polling for secrets (timeout: {timeout_in_seconds}s)...')
-			print(f'🔗 Visit this URL to input secrets: {secret_url}')
 
 			# Send notification with secret URL
 			try:
@@ -154,7 +150,11 @@ class WaitForSecrets:
 
 			# Step 2: Poll for secrets
 			start_time = time.time()
+			timeout_in_seconds = timeout * 60  # Convert minutes to seconds
 			secrets_data = None
+   
+			print(f'⏳ Polling for secrets (timeout: {timeout} minute(s))...')
+			print(f'🔗 Visit this URL to input secrets: {secret_url}')
 
 			while True:
 				elapsed = time.time() - start_time
