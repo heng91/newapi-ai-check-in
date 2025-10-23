@@ -121,16 +121,19 @@ class WaitForSecrets:
 			api_url = 'https://prod.api.stepsecurity.io/v1/secrets'
 			headers = {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
 
-			# Convert secrets_metadata to JSON string format
-			import json
-			secrets_payload = [json.dumps(secrets_metadata)]
+			# Convert secrets_metadata to expected payload format
+			secrets_metadata_payload = []
+			for secret_name, secret_info in secrets_metadata.items():
+				secrets_metadata_payload.append(f"{secret_name}:")
+				secrets_metadata_payload.append(f"name: '{secret_info.get('name', secret_name)}'")
+				secrets_metadata_payload.append(f"description: '{secret_info.get('description', '')}'")
 
 			# Step 1: Send PUT request to register secrets
 			with httpx.Client(timeout=10.0) as client:
-				put_response = client.put(api_url, headers=headers, json=secrets_payload)
+				put_response = client.put(api_url, headers=headers, json=secrets_metadata_payload)
 
 			if put_response.status_code != 200:
-				print(f'❌ Failed to register secret request: HTTP {put_response.status_code}')
+				print(f'❌ Failed to register secret request: HTTP {put_response.status_code}, {put_response.text}')
 				return None
 
 			timeout_in_seconds = timeout * 60  # Convert minutes to seconds
@@ -158,11 +161,18 @@ class WaitForSecrets:
 				elapsed = time.time() - start_time
 
 				if elapsed >= timeout_in_seconds:
-					print(f'⏱️ Timeout after {timeout_in_seconds}s waiting for secrets')
+					print(f'⏱️ Timeout after {timeout} minute(s) waiting for secrets')
 					print(f'🔗 Secret URL was: {secret_url}')
 					break
 
 				try:
+					# Get OIDC token
+					token = self.get_oidc_token()
+					if not token:
+						break
+  
+					headers = {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
+  
 					with httpx.Client(timeout=10.0) as client:
 						get_response = client.get(api_url, headers=headers)
 
@@ -199,13 +209,20 @@ class WaitForSecrets:
 
 			# Step 3: Clear secrets from datastore
 			try:
+				# Get OIDC token
+				token = self.get_oidc_token()
+				if not token:
+					raise Exception('Failed to get OIDC token for clearing secrets')
+
+				headers = {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
+
 				with httpx.Client(timeout=10.0) as client:
 					delete_response = client.delete(api_url, headers=headers)
 
 				if delete_response.status_code == 200:
 					print('✅ Secret cleared from datastore')
 				else:
-					print(f'⚠️ Failed to clear secret: HTTP {delete_response.status_code}')
+					print(f'⚠️ Failed to clear secret: HTTP {delete_response.status_code}, {delete_response.text}')
 
 			except Exception as e:
 				print(f'⚠️ Error clearing secret: {e}')

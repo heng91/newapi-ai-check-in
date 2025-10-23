@@ -788,7 +788,7 @@ class CheckIn:
 
     async def execute(self) -> list[tuple[str, bool, dict | None]]:
         """为单个账号执行签到操作，支持多种认证方式"""
-        print(f"\n\n⚙️ Starting to process {self.account_name}")
+        print(f"\n\n🌀 Starting to process {self.account_name}")
 
         waf_cookies = {}
         if self.provider_config.needs_waf_cookies():
