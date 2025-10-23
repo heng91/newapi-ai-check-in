@@ -93,7 +93,7 @@ jobs:
         FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
         WEIXIN_WEBHOOK: ${{ secrets.WEIXIN_WEBHOOK }}
       run: |
-        uv run main.py
+        uv run python -u main.py
 
     - name: 执行结果
       if: always()
