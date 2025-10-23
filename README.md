@@ -85,6 +85,12 @@
 
 ![获取 api_user](./assets/request-api-user.png)
 
+ #### `GitHub` 在新设备上登录会有两次验证
+
+通过打印日志中链接打开并输入验证码。
+
+![输入 OTP](./assets/github-otp.png)
+
 ### 4. 启用 GitHub Actions
 
 1. 在你的仓库中，点击 "Actions" 选项卡
