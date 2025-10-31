@@ -550,8 +550,9 @@ class CheckIn:
                                 print(f"❌ {self.account_name}: OAuth failed")
                                 return False, {"error": "GitHub OAuth failed - no user ID found"}
 
-                        except Exception as e:
+                       except Exception as e:
                             print(f"❌ {self.account_name}: Error occurred while authorization redirecting: {e}")
+                            print(f"❌ {self.account_name}: Current page is : {page.url}")
                             return False, {"error": "GitHub authorization redirecting failed"}
                     except Exception as e:
                         print(f"❌ {self.account_name}: Error occurred while signing in GitHub: {e}")
