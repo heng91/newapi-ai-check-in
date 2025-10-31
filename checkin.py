@@ -71,7 +71,7 @@ class CheckIn:
 
                 try:
                     print(f"ℹ️ {self.account_name}: Access login page to get initial cookies")
-                    await page.goto(self.provider_config.get_login_url(), wait_until="networkidle")
+                    await page.goto(self.provider_config.get_login_url())
 
                     try:
                         await page.wait_for_function('document.readyState === "complete"', timeout=5000)
@@ -406,7 +406,7 @@ class CheckIn:
                             try:
                                 print(f"ℹ️ {self.account_name}: open {oauth_url}")
                                 # 直接访问授权页面检查是否已登录
-                                response = await page.goto(oauth_url, wait_until="domcontentloaded")
+                                response = await page.goto(oauth_url)
                                 print(f"ℹ️ {self.account_name}: redirected to app page {response.url if response else 'N/A'}")
                                 
                                 # GitHub 登录后可能直接跳转回应用页面
@@ -434,7 +434,7 @@ class CheckIn:
                             try:
                                 print(f"ℹ️ {self.account_name}: start to sign in GitHub")
 
-                                await page.goto("https://github.com/login", wait_until="domcontentloaded")
+                                await page.goto("https://github.com/login")
                                 await page.fill("#login_field", username)
                                 await page.fill("#password", password)
                                 await page.click('input[type="submit"][value="Sign in"]')
@@ -489,7 +489,7 @@ class CheckIn:
                             # 登录后访问授权页面
                             try:
                                 print(f"ℹ️ {self.account_name}: open {oauth_url}")
-                                response = await page.goto(oauth_url, wait_until="domcontentloaded")
+                                response = await page.goto(oauth_url)
                                 print(f"ℹ️ {self.account_name}: redirected to app page {response.url if response else 'N/A'}")
                                 
                                 # GitHub 登录后可能直接跳转回应用页面
@@ -682,7 +682,7 @@ class CheckIn:
                             try:
                                 print(f"ℹ️ {self.account_name}: open {oauth_url}")
                                 # 直接访问授权页面检查是否已登录
-                                await page.goto(oauth_url, wait_until="domcontentloaded")
+                                await page.goto(oauth_url)
                                 
 
                                 # 检查是否出现授权按钮（表示已登录）
@@ -702,7 +702,7 @@ class CheckIn:
                             try:
                                 print(f"ℹ️ {self.account_name}: start to sign in linux.do")
 
-                                await page.goto("https://linux.do/login", wait_until="domcontentloaded")
+                                await page.goto("https://linux.do/login")
                                 await page.fill("#login-account-name", username)
                                 await page.fill("#login-account-password", password)
                                 await page.click("#login-button")
@@ -718,7 +718,7 @@ class CheckIn:
                             # 登录后访问授权页面
                             try:
                                 print(f"ℹ️ {self.account_name}: open {oauth_url}")
-                                await page.goto(oauth_url, wait_until="domcontentloaded")
+                                await page.goto(oauth_url)
                             except Exception as e:
                                 print(f"❌ {self.account_name}: Failed to navigate to authorization page: {e}")
                                 return False, {"error": "Linux.do authorization page navigation failed"}
