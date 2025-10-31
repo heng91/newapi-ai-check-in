@@ -512,7 +512,7 @@ class CheckIn:
 
                         # 统一处理授权逻辑（无论是否通过缓存登录）
                         try:
-                            await page.wait_for_url(f"**{self.provider_config.origin}/oauth/**", timeout=5000)
+                            await page.wait_for_url(f"**{self.provider_config.origin}/oauth/**", timeout=30000)
                             
                             # 从 localStorage 获取 user 对象并提取 id
                             api_user = None
@@ -730,7 +730,7 @@ class CheckIn:
                             allow_btn_ele = await page.query_selector('a[href^="/oauth2/approve"]')
                             if allow_btn_ele:
                                 await allow_btn_ele.click()
-                                await page.wait_for_url(f"**{self.provider_config.origin}/oauth/**", timeout=5000)
+                                await page.wait_for_url(f"**{self.provider_config.origin}/oauth/**", timeout=30000)
 
                                 # 从 localStorage 获取 user 对象并提取 id
                                 api_user = None
