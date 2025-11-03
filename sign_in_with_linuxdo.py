@@ -400,7 +400,7 @@ class LinuxDoSignIn:
                                     pass
 
                                 # 保存新的会话状态
-                                await context.storage_state(path=cache_file_path)
+                                await browser.storage_state(path=cache_file_path)
                                 print(f"✅ {self.account_name}: Session state saved to cache")
 
                             except Exception as e:
