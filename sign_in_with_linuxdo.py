@@ -283,8 +283,6 @@ class LinuxDoSignIn:
                     humanize=True,
                     locale="en-US",
                 ) as browser:  # 启用人性化行为
-                    # 创建新的浏览器上下文
-                    context = await browser.new_context()
 
                     # 检查缓存文件是否存在，从缓存文件中恢复会话 cookies
                     if os.path.exists(cache_file_path):
@@ -310,7 +308,7 @@ class LinuxDoSignIn:
                                         }
                                         playwright_cookies.append(cookie_data)
 
-                                    await context.add_cookies(playwright_cookies)
+                                    await browser.add_cookies(playwright_cookies)
                                     print(
                                         f"✅ {self.account_name}: Restored {len(playwright_cookies)} cookies from cache"
                                     )
@@ -327,12 +325,12 @@ class LinuxDoSignIn:
 
                     # 设置从参数获取的 auth cookies 到页面上下文
                     if auth_cookies:
-                        await context.add_cookies(auth_cookies)
+                        await browser.add_cookies(auth_cookies)
                         print(f"ℹ️ {self.account_name}: Set {len(auth_cookies)} auth cookies from provider")
                     else:
                         print(f"ℹ️ {self.account_name}: No auth cookies to set")
 
-                    page = await context.new_page()
+                    page = await browser.new_page()
 
                     try:
                         # 检查是否已经登录（通过缓存恢复）
