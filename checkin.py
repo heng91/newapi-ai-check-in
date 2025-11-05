@@ -149,7 +149,7 @@ class CheckIn:
                     data = response.json()
                 except json.JSONDecodeError as json_err:
                     print(f"❌ {self.account_name}: Failed to parse JSON response")
-                    print(f"📄 Response content (first 500 chars): {response.text[:500]}")
+                    print(f"📄 Response content (first 500 chars): {response.text}")
                     return {
                         "success": False,
                         "error": f"Failed to get auth state: Invalid JSON response - {json_err}",
