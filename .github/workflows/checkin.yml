@@ -126,6 +126,15 @@ jobs:
       run: |
         uv run python -u main.py
 
+    - name: 上传截图
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: screenshots-${{ github.run_number }}
+        path: screenshots/
+        if-no-files-found: ignore
+        retention-days: 7
+
     - name: 执行结果
       if: always()
       run: |

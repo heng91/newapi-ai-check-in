@@ -7,6 +7,7 @@ import json
 import os
 import tempfile
 from urllib.parse import urlparse
+from datetime import datetime
 
 from playwright.async_api import async_playwright
 from utils.browser_utils import filter_cookies
@@ -36,6 +37,30 @@ class GitHubSignIn:
         self.provider_config = provider_config
         self.username = username
         self.password = password
+
+    async def _take_screenshot(self, page, reason: str) -> None:
+        """截取当前页面的屏幕截图
+
+        Args:
+            page: Playwright 页面对象
+            reason: 截图原因描述
+        """
+        try:
+            # 创建 screenshots 目录
+            screenshots_dir = "screenshots"
+            os.makedirs(screenshots_dir, exist_ok=True)
+
+            # 生成文件名: 账号名_时间戳_原因.png
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            safe_account_name = "".join(c if c.isalnum() else "_" for c in self.account_name)
+            safe_reason = "".join(c if c.isalnum() else "_" for c in reason)
+            filename = f"{safe_account_name}_{timestamp}_{safe_reason}.png"
+            filepath = os.path.join(screenshots_dir, filename)
+
+            await page.screenshot(path=filepath, full_page=True)
+            print(f"📸 {self.account_name}: Screenshot saved to {filepath}")
+        except Exception as e:
+            print(f"⚠️ {self.account_name}: Failed to take screenshot: {e}")
 
     async def signin(
         self,
@@ -217,6 +242,7 @@ class GitHubSignIn:
 
                         except Exception as e:
                             print(f"❌ {self.account_name}: Error occurred while signing in GitHub: {e}")
+                            await self._take_screenshot(page, "github_signin_error")
                             return False, {"error": "GitHub sign-in error"}
 
                         # 登录后访问授权页面
@@ -242,6 +268,7 @@ class GitHubSignIn:
                                     print(f"ℹ️ {self.account_name}: Approve button not found")
                         except Exception as e:
                             print(f"❌ {self.account_name}: Error occurred while authorization approve: {e}")
+                            await self._take_screenshot(page, "github_auth_approval_failed")
                             return False, {"error": "GitHub authorization approval failed"}
 
                     # 统一处理授权逻辑（无论是否通过缓存登录）
@@ -277,6 +304,7 @@ class GitHubSignIn:
                             return True, {"cookies": user_cookies, "api_user": api_user}
                         else:
                             print(f"❌ {self.account_name}: OAuth failed")
+                            await self._take_screenshot(page, "github_oauth_failed_no_user_id")
                             return False, {"error": "GitHub OAuth failed - no user ID found"}
 
                     except Exception as e:
@@ -284,10 +312,12 @@ class GitHubSignIn:
                             f"❌ {self.account_name}: Error occurred during authorization: {e}\n\n"
                             f"Current page is: {page.url}"
                         )
+                        await self._take_screenshot(page, "github_authorization_failed")
                         return False, {"error": "GitHub authorization failed"}
 
                 except Exception as e:
                     print(f"❌ {self.account_name}: Error occurred while processing GitHub page: {e}")
+                    await self._take_screenshot(page, "github_page_navigation_error")
                     return False, {"error": "GitHub page navigation error"}
                 finally:
                     await page.close()

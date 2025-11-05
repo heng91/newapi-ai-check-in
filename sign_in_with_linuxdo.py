@@ -7,6 +7,7 @@ import json
 import os
 from urllib.parse import urlparse
 import tempfile
+from datetime import datetime
 
 from utils.browser_utils import filter_cookies, human_behavior
 from utils.config import ProviderConfig
@@ -34,6 +35,30 @@ class LinuxDoSignIn:
         self.provider_config = provider_config
         self.username = username
         self.password = password
+
+    async def _take_screenshot(self, page, reason: str) -> None:
+        """截取当前页面的屏幕截图
+
+        Args:
+            page: Playwright 页面对象
+            reason: 截图原因描述
+        """
+        try:
+            # 创建 screenshots 目录
+            screenshots_dir = "screenshots"
+            os.makedirs(screenshots_dir, exist_ok=True)
+
+            # 生成文件名: 账号名_时间戳_原因.png
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            safe_account_name = "".join(c if c.isalnum() else "_" for c in self.account_name)
+            safe_reason = "".join(c if c.isalnum() else "_" for c in reason)
+            filename = f"{safe_account_name}_{timestamp}_{safe_reason}.png"
+            filepath = os.path.join(screenshots_dir, filename)
+
+            await page.screenshot(path=filepath, full_page=True)
+            print(f"📸 {self.account_name}: Screenshot saved to {filepath}")
+        except Exception as e:
+            print(f"⚠️ {self.account_name}: Failed to take screenshot: {e}")
 
     async def signin(
         self,
@@ -178,6 +203,7 @@ class LinuxDoSignIn:
                                         f"❌ {self.account_name}: Cloudflare challenge not completed, "
                                         "still on challenge page"
                                     )
+                                    await self._take_screenshot(page, "cloudflare_challenge_not_completed")
                                     return False, {"error": "Cloudflare challenge not completed"}
 
                                 print(f"✅ {self.account_name}: Challenge completed successfully")
@@ -187,6 +213,7 @@ class LinuxDoSignIn:
 
                         except Exception as e:
                             print(f"❌ {self.account_name}: Error occurred while signing in linux.do: {e}")
+                            await self._take_screenshot(page, "signin_error")
                             return False, {"error": "Linux.do sign-in error"}
 
                         # 登录后访问授权页面
@@ -195,6 +222,7 @@ class LinuxDoSignIn:
                             await page.goto(oauth_url, wait_until="domcontentloaded")
                         except Exception as e:
                             print(f"❌ {self.account_name}: Failed to navigate to authorization page: {e}")
+                            await self._take_screenshot(page, "auth_page_navigation_failed")
                             return False, {"error": "Linux.do authorization page navigation failed"}
 
                     # 统一处理授权逻辑（无论是否通过缓存登录）
@@ -234,17 +262,21 @@ class LinuxDoSignIn:
                                 return True, {"cookies": user_cookies, "api_user": api_user}
                             else:
                                 print(f"❌ {self.account_name}: OAuth failed")
+                                await self._take_screenshot(page, "oauth_failed_no_user_id")
                                 return False, {"error": "Linux.do OAuth failed - no user ID found"}
                         else:
                             print(f"❌ {self.account_name}: Approve button not found")
+                            await self._take_screenshot(page, "approve_button_not_found")
                             return False, {"error": "Linux.do allow button not found"}
                     except Exception as e:
                         print(
                             f"❌ {self.account_name}: Error occurred while signing in linux.do: {e} \n\nCurrent page is : {page.url}"
                         )
+                        await self._take_screenshot(page, "authorization_failed")
                         return False, {"error": "Linux.do authorization failed"}
                 except Exception as e:
                     print(f"❌ {self.account_name}: Error occurred while goto linux.do page: {e}")
+                    await self._take_screenshot(page, "page_navigation_error")
                     return False, {"error": "Linux.do page navigation error"}
                 finally:
                     await page.close()
@@ -405,6 +437,7 @@ class LinuxDoSignIn:
 
                             except Exception as e:
                                 print(f"❌ {self.account_name}: Error occurred while signing in linux.do: {e}")
+                                await self._take_screenshot(page, "signin_bypass_error")
                                 return False, {"error": "Linux.do sign-in error"}
 
                             # 登录后访问授权页面
@@ -413,6 +446,7 @@ class LinuxDoSignIn:
                                 await page.goto(oauth_url, wait_until="domcontentloaded")
                             except Exception as e:
                                 print(f"❌ {self.account_name}: Failed to navigate to authorization page: {e}")
+                                await self._take_screenshot(page, "auth_page_navigation_failed_bypass")
                                 return False, {"error": "Linux.do authorization page navigation failed"}
 
                         # 统一处理授权逻辑（无论是否通过缓存登录）
@@ -455,9 +489,11 @@ class LinuxDoSignIn:
                                     return True, {"cookies": user_cookies, "api_user": api_user}
                                 else:
                                     print(f"❌ {self.account_name}: OAuth failed")
+                                    await self._take_screenshot(page, "oauth_failed_no_user_id_bypass")
                                     return False, {"error": "Linux.do OAuth failed - no user ID found"}
                             else:
                                 print(f"❌ {self.account_name}: Approve button not found")
+                                await self._take_screenshot(page, "approve_button_not_found_bypass")
                                 return False, {"error": "Linux.do allow button not found"}
 
                         except Exception as e:
@@ -465,10 +501,12 @@ class LinuxDoSignIn:
                                 f"❌ {self.account_name}: Error occurred during authorization: {e}\n\n"
                                 f"Current page is: {page.url}"
                             )
+                            await self._take_screenshot(page, "authorization_failed_bypass")
                             return False, {"error": "Linux.do authorization failed"}
 
                     except Exception as e:
                         print(f"❌ {self.account_name}: Error occurred while processing linux.do page: {e}")
+                        await self._take_screenshot(page, "page_navigation_error_bypass")
                         return False, {"error": "Linux.do page navigation error"}
                     finally:
                         await page.close()
