@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 import httpx
 from playwright.async_api import async_playwright
 from utils.config import AccountConfig, ProviderConfig
-from utils.browser_utils import parse_cookies
+from utils.browser_utils import parse_cookies, get_random_user_agent
 
 
 class CheckIn:
@@ -103,7 +103,7 @@ class CheckIn:
                     data = response.json()
                 except json.JSONDecodeError as json_err:
                     print(f"❌ {self.account_name}: Failed to parse JSON response")
-                    print(f"📄 Response content (first 500 chars): {response.text}")
+                    print(f"    📄 Response content (first 500 chars): {response.text}")
                     return {
                         "success": False,
                         "error": f"Failed to get client id: Invalid JSON response - {json_err}",
@@ -149,7 +149,7 @@ class CheckIn:
                     data = response.json()
                 except json.JSONDecodeError as json_err:
                     print(f"❌ {self.account_name}: Failed to parse JSON response")
-                    print(f"📄 Response content (first 500 chars): {response.text}")
+                    print(f"    📄 Response content (first 500 chars): {response.text}")
                     return {
                         "success": False,
                         "error": f"Failed to get auth state: Invalid JSON response - {json_err}",
@@ -216,7 +216,7 @@ class CheckIn:
                     data = response.json()
                 except json.JSONDecodeError as json_err:
                     print(f"❌ {self.account_name}: Failed to parse JSON response")
-                    print(f"📄 Response content (first 500 chars): {response.text[:500]}")
+                    print(f"    📄 Response content (first 500 chars): {response.text[:500]}")
                     return {
                         "success": False,
                         "error": f"Failed to get user info: Invalid JSON response - {json_err}",
@@ -292,11 +292,11 @@ class CheckIn:
             client.cookies.update(cookies)
 
             headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
+                "User-Agent": get_random_user_agent(),
                 "Accept": "application/json, text/plain, */*",
                 "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
                 "Accept-Encoding": "gzip, deflate, br, zstd",
-                "Referer": self.provider_config.origin,
+                "Referer": self.provider_config.get_login_url(),
                 "Origin": self.provider_config.origin,
                 "Connection": "keep-alive",
                 "Sec-Fetch-Dest": "empty",
@@ -338,11 +338,11 @@ class CheckIn:
             client.cookies.update(waf_cookies)
 
             headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
+                "User-Agent": get_random_user_agent(),
                 "Accept": "application/json, text/plain, */*",
                 "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
                 "Accept-Encoding": "gzip, deflate, br, zstd",
-                "Referer": self.provider_config.origin,
+                "Referer": self.provider_config.get_login_url(),
                 "Origin": self.provider_config.origin,
                 "Connection": "keep-alive",
                 "Sec-Fetch-Dest": "empty",
@@ -426,15 +426,11 @@ class CheckIn:
             client.cookies.update(waf_cookies)
 
             headers = {
-                "User-Agent": (
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/138.0.0.0 Safari/537.36"
-                ),
+                "User-Agent": get_random_user_agent(),
                 "Accept": "application/json, text/plain, */*",
                 "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
                 "Accept-Encoding": "gzip, deflate, br, zstd",
-                "Referer": self.provider_config.origin,
+                "Referer": self.provider_config.get_login_url(),
                 "Origin": self.provider_config.origin,
                 "Connection": "keep-alive",
                 "Sec-Fetch-Dest": "empty",
