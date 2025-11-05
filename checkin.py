@@ -274,6 +274,8 @@ class CheckIn:
                     except Exception:
                         await page.wait_for_timeout(3000)
 
+                    self._take_screenshot(page, "login_page_opened")
+
                     # 2. Store status in localStorage (after page is loaded)
                     print(f"ℹ️ {self.account_name}: Storing status in localStorage")
                     status_json = json.dumps(status, ensure_ascii=False)
@@ -290,6 +292,8 @@ class CheckIn:
                         await page.wait_for_function('document.readyState === "complete"', timeout=5000)
                     except Exception:
                         await page.wait_for_timeout(3000)
+                        
+                    self._take_screenshot(page, "login_page_reloaded")
 
                     # 4. Click the main button[0] and wait for new tab
                     print(f"ℹ️ {self.account_name}: Clicking main button")
@@ -306,14 +310,15 @@ class CheckIn:
                         await self._take_screenshot(page, "no_buttons_found")
                         return {"success": False, "error": "No buttons found on login page"}
 
+                    self._take_screenshot(new_page, "auth_page_opened")
+                    
                     # 5. Get the first URL of the new tab (don't wait for loading)
-                    print(f"ℹ️ {self.account_name}: Getting new tab's initial URL")
-                    current_url = new_page.url
-                    print(f"ℹ️ {self.account_name}: New tab URL: {current_url}")
+                    print(f"ℹ️ {self.account_name}: New tab URL: {new_page.url}")
 
                     # Check if URL matches the expected pattern
-                    if wait_for_url in current_url:
+                    if wait_for_url in new_page.url:
                         print(f"✅ {self.account_name}: New tab URL matches expected pattern")
+                        current_url = new_page.url
                     else:
                         print(f"⚠️ {self.account_name}: URL doesn't match pattern but continuing anyway")
 
@@ -332,10 +337,8 @@ class CheckIn:
                     return {"success": False, "error": f"Error getting auth URL: {e}"}
                 finally:
                     await page.close()
-                    if 'new_page' in locals():
+                    if "new_page" in locals():
                         await new_page.close()
-
-
 
     async def get_auth_state(
         self,
