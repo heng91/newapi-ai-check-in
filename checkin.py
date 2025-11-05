@@ -71,50 +71,53 @@ class CheckIn:
         """使用 Camoufox 获取 WAF cookies（隐私模式）"""
         print(f"ℹ️ {self.account_name}: Starting Camoufox browser to get WAF cookies")
 
-        async with AsyncCamoufox(
-            persistent_context=True,
-            headless=False,
-            humanize=True,
-            locale="en-US",
-        ) as browser:
-            page = await browser.new_page()
-
-            try:
-                print(f"ℹ️ {self.account_name}: Access login page to get initial cookies")
-                await page.goto(self.provider_config.get_login_url(), wait_until="domcontentloaded")
+        with tempfile.TemporaryDirectory(prefix=f"camoufox_{self.account_name}_waf_") as user_data_dir:
+            async with AsyncCamoufox(
+                persistent_context=True,
+                user_data_dir=user_data_dir,
+                headless=False,
+                humanize=True,
+                locale="en-US",
+            ) as browser:
+                page = await browser.new_page()
 
                 try:
-                    await page.wait_for_function('document.readyState === "complete"', timeout=5000)
-                except Exception:
-                    await page.wait_for_timeout(3000)
+                    print(f"ℹ️ {self.account_name}: Access login page to get initial cookies")
+                    await page.goto(self.provider_config.get_login_url(), wait_until="domcontentloaded")
 
-                cookies = await page.context.cookies()
+                    try:
+                        await page.wait_for_function('document.readyState === "complete"', timeout=5000)
+                    except Exception:
+                        await page.wait_for_timeout(3000)
 
-                waf_cookies = {}
-                for cookie in cookies:
-                    cookie_name = cookie.get("name")
-                    cookie_value = cookie.get("value")
-                    if cookie_name in ["acw_tc", "cdn_sec_tc", "acw_sc__v2"] and cookie_value is not None:
-                        waf_cookies[cookie_name] = cookie_value
+                    cookies = await page.context.cookies()
 
-                print(f"ℹ️ {self.account_name}: Got {len(waf_cookies)} WAF cookies after step 1")
+                    waf_cookies = {}
+                    for cookie in cookies:
+                        cookie_name = cookie.get("name")
+                        cookie_value = cookie.get("value")
+                        if cookie_name in ["acw_tc", "cdn_sec_tc", "acw_sc__v2"] and cookie_value is not None:
+                            waf_cookies[cookie_name] = cookie_value
 
-                # 检查是否至少获取到一个 WAF cookie
-                if not waf_cookies:
-                    print(f"❌ {self.account_name}: No WAF cookies obtained")
+                    print(f"ℹ️ {self.account_name}: Got {len(waf_cookies)} WAF cookies after step 1")
+
+                    # 检查是否至少获取到一个 WAF cookie
+                    if not waf_cookies:
+                        print(f"❌ {self.account_name}: No WAF cookies obtained")
+                        return None
+
+                    # 显示获取到的 cookies
+                    cookie_names = list(waf_cookies.keys())
+                    print(f"✅ {self.account_name}: Successfully got WAF cookies: {cookie_names}")
+
+                    return waf_cookies
+
+                except Exception as e:
+                    print(f"❌ {self.account_name}: Error occurred while getting WAF cookies: {e}")
                     return None
+                finally:
+                    await page.close()
 
-                # 显示获取到的 cookies
-                cookie_names = list(waf_cookies.keys())
-                print(f"✅ {self.account_name}: Successfully got WAF cookies: {cookie_names}")
-
-                return waf_cookies
-
-            except Exception as e:
-                print(f"❌ {self.account_name}: Error occurred while getting WAF cookies: {e}")
-                return None
-            finally:
-                await page.close()
 
     async def get_status_with_browser(self) -> dict | None:
         """使用 Camoufox 获取状态信息并缓存
@@ -123,42 +126,45 @@ class CheckIn:
         """
         print(f"ℹ️ {self.account_name}: Starting Camoufox browser to get status")
 
-        async with AsyncCamoufox(
-            persistent_context=True,
-            headless=False,
-            humanize=True,
-            locale="en-US",
-        ) as browser:
-            page = await browser.new_page()
-
-            try:
-                print(f"ℹ️ {self.account_name}: Access status page to get status from localStorage")
-                await page.goto(self.provider_config.get_login_url(), wait_until="domcontentloaded")
+        with tempfile.TemporaryDirectory(prefix=f"camoufox_{self.account_name}_status_") as user_data_dir:
+            async with AsyncCamoufox(
+                user_data_dir=user_data_dir,
+                persistent_context=True,
+                headless=False,
+                humanize=True,
+                locale="en-US",
+            ) as browser:
+                page = await browser.new_page()
 
                 try:
-                    await page.wait_for_function('document.readyState === "complete"', timeout=5000)
-                except Exception:
-                    await page.wait_for_timeout(3000)
+                    print(f"ℹ️ {self.account_name}: Access status page to get status from localStorage")
+                    await page.goto(self.provider_config.get_login_url(), wait_until="domcontentloaded")
 
-                # 从 localStorage 获取 status
-                status_data = None
-                try:
-                    status_str = await page.evaluate("() => localStorage.getItem('status')")
-                    if status_str:
-                        status_data = json.loads(status_str)
-                        print(f"✅ {self.account_name}: Got status from localStorage")
-                    else:
-                        print(f"⚠️ {self.account_name}: No status found in localStorage")
+                    try:
+                        await page.wait_for_function('document.readyState === "complete"', timeout=5000)
+                    except Exception:
+                        await page.wait_for_timeout(3000)
+
+                    # 从 localStorage 获取 status
+                    status_data = None
+                    try:
+                        status_str = await page.evaluate("() => localStorage.getItem('status')")
+                        if status_str:
+                            status_data = json.loads(status_str)
+                            print(f"✅ {self.account_name}: Got status from localStorage")
+                        else:
+                            print(f"⚠️ {self.account_name}: No status found in localStorage")
+                    except Exception as e:
+                        print(f"⚠️ {self.account_name}: Error reading status from localStorage: {e}")
+
+                    return status_data
+
                 except Exception as e:
-                    print(f"⚠️ {self.account_name}: Error reading status from localStorage: {e}")
+                    print(f"❌ {self.account_name}: Error occurred while getting status: {e}")
+                    return None
+                finally:
+                    await page.close()
 
-                return status_data
-
-            except Exception as e:
-                print(f"❌ {self.account_name}: Error occurred while getting status: {e}")
-                return None
-            finally:
-                await page.close()
 
     async def get_auth_client_id(self, client: httpx.Client, headers: dict, provider: str) -> dict:
         """获取状态信息
@@ -250,107 +256,111 @@ class CheckIn:
         """
         print(f"ℹ️ {self.account_name}: Starting Camoufox browser to get auth URL")
 
-        async with AsyncCamoufox(
-            persistent_context=True,
-            headless=False,
-            humanize=True,
-            locale="en-US",
-        ) as browser:
-            # 获取初始页面数量
-            initial_page_count = len(browser.contexts[0].pages) if browser.contexts else 0
-            print(f"ℹ️ {self.account_name}: Initial page count: {initial_page_count}")
+        with tempfile.TemporaryDirectory(prefix=f"camoufox_{self.account_name}_auth_") as user_data_dir:
+            async with AsyncCamoufox(
+                user_data_dir=user_data_dir,
+                persistent_context=True,
+                headless=False,
+                humanize=True,
+                locale="en-US",
+            ) as browser:
+                # 获取初始页面数量
+                initial_page_count = len(browser.contexts[0].pages) if browser.contexts else 0
+                print(f"ℹ️ {self.account_name}: Initial page count: {initial_page_count}")
 
-            page = await browser.new_page()
+                page = await browser.new_page()
 
-            try:
-                # 1. Open the login page first
-                print(f"ℹ️ {self.account_name}: Opening login page")
-                await page.goto(self.provider_config.get_login_url(), wait_until="domcontentloaded")
-
-                # Wait for page to be fully loaded
                 try:
-                    await page.wait_for_function('document.readyState === "complete"', timeout=5000)
-                except Exception:
-                    await page.wait_for_timeout(3000)
+                    # 1. Open the login page first
+                    print(f"ℹ️ {self.account_name}: Opening login page")
+                    await page.goto(self.provider_config.get_login_url(), wait_until="domcontentloaded")
 
-                # 2. Store status in localStorage (after page is loaded)
-                print(f"ℹ️ {self.account_name}: Storing status in localStorage")
-                status_json = json.dumps(status, ensure_ascii=False)
-                # Escape single quotes for JavaScript string literal
-                status_json_escaped = status_json.replace("'", "\\'")
-                await page.evaluate(f"() => localStorage.setItem('status', '{status_json_escaped}')")
+                    # Wait for page to be fully loaded
+                    try:
+                        await page.wait_for_function('document.readyState === "complete"', timeout=5000)
+                    except Exception:
+                        await page.wait_for_timeout(3000)
 
-                # 3. Reload the page to apply localStorage changes
-                print(f"ℹ️ {self.account_name}: Reloading page after setting localStorage")
-                await page.reload(wait_until="domcontentloaded")
+                    # 2. Store status in localStorage (after page is loaded)
+                    print(f"ℹ️ {self.account_name}: Storing status in localStorage")
+                    status_json = json.dumps(status, ensure_ascii=False)
+                    # Escape single quotes for JavaScript string literal
+                    status_json_escaped = status_json.replace("'", "\\'")
+                    await page.evaluate(f"() => localStorage.setItem('status', '{status_json_escaped}')")
 
-                # Wait for page to be fully loaded after reload
-                try:
-                    await page.wait_for_function('document.readyState === "complete"', timeout=5000)
-                except Exception:
-                    await page.wait_for_timeout(3000)
+                    # 3. Reload the page to apply localStorage changes
+                    print(f"ℹ️ {self.account_name}: Reloading page after setting localStorage")
+                    await page.reload(wait_until="domcontentloaded")
 
-                # 4. Click the main button[0] and wait for new tab
-                print(f"ℹ️ {self.account_name}: Clicking main button")
-                buttons = await page.query_selector_all("main button")
-                if buttons and len(buttons) > 0:
-                    # 点击按钮前先获取当前页面数量
-                    before_click_page_count = len(browser.contexts[0].pages)
-                    print(f"ℹ️ {self.account_name}: Page count before click: {before_click_page_count}")
+                    # Wait for page to be fully loaded after reload
+                    try:
+                        await page.wait_for_function('document.readyState === "complete"', timeout=5000)
+                    except Exception:
+                        await page.wait_for_timeout(3000)
 
-                    # 点击按钮
-                    await buttons[0].click()
-                    print(f"ℹ️ {self.account_name}: Button clicked, waiting for new tab")
+                    # 4. Click the main button[0] and wait for new tab
+                    print(f"ℹ️ {self.account_name}: Clicking main button")
+                    buttons = await page.query_selector_all("main button")
+                    if buttons and len(buttons) > 0:
+                        # 点击按钮前先获取当前页面数量
+                        before_click_page_count = len(browser.contexts[0].pages)
+                        print(f"ℹ️ {self.account_name}: Page count before click: {before_click_page_count}")
 
-                    # 等待新页面出现
-                    new_page = None
-                    for i in range(30):  # 最多等待3秒（30次 * 100ms）
-                        await page.wait_for_timeout(100)
-                        current_page_count = len(browser.contexts[0].pages)
-                        if current_page_count > before_click_page_count:
-                            # 找到新页面
-                            pages = browser.contexts[0].pages
-                            new_page = pages[-1]  # 取最后一个页面
-                            print(f"ℹ️ {self.account_name}: New tab detected")
-                            break
+                        # 点击按钮
+                        await buttons[0].click()
+                        print(f"ℹ️ {self.account_name}: Button clicked, waiting for new tab")
 
-                    if new_page is None:
-                        print(f"❌ {self.account_name}: No new tab opened after clicking button")
-                        await self._take_screenshot(page, "no_new_tab")
-                        return {"success": False, "error": "No new tab opened"}
-                else:
-                    print(f"⚠️ {self.account_name}: No buttons found on page")
-                    await self._take_screenshot(page, "no_buttons_found")
-                    return {"success": False, "error": "No buttons found on login page"}
+                        # 等待新页面出现
+                        new_page = None
+                        for i in range(30):  # 最多等待3秒（30次 * 100ms）
+                            await page.wait_for_timeout(100)
+                            current_page_count = len(browser.contexts[0].pages)
+                            if current_page_count > before_click_page_count:
+                                # 找到新页面
+                                pages = browser.contexts[0].pages
+                                new_page = pages[-1]  # 取最后一个页面
+                                print(f"ℹ️ {self.account_name}: New tab detected")
+                                break
 
-                # 5. Get the first URL of the new tab (don't wait for loading)
-                print(f"ℹ️ {self.account_name}: Getting new tab's initial URL")
-                current_url = new_page.url
-                print(f"ℹ️ {self.account_name}: New tab URL: {current_url}")
+                        if new_page is None:
+                            print(f"❌ {self.account_name}: No new tab opened after clicking button")
+                            await self._take_screenshot(page, "no_new_tab")
+                            return {"success": False, "error": "No new tab opened"}
+                    else:
+                        print(f"⚠️ {self.account_name}: No buttons found on page")
+                        await self._take_screenshot(page, "no_buttons_found")
+                        return {"success": False, "error": "No buttons found on login page"}
 
-                # Check if URL matches the expected pattern
-                if wait_for_url in current_url:
-                    print(f"✅ {self.account_name}: New tab URL matches expected pattern")
-                else:
-                    print(f"⚠️ {self.account_name}: URL doesn't match pattern but continuing anyway")
+                    # 5. Get the first URL of the new tab (don't wait for loading)
+                    print(f"ℹ️ {self.account_name}: Getting new tab's initial URL")
+                    current_url = new_page.url
+                    print(f"ℹ️ {self.account_name}: New tab URL: {current_url}")
 
-                # 6. Get cookies from the context
-                cookies = await new_page.context.cookies()
-                print(f"ℹ️ {self.account_name}: Got {len(cookies)} cookies from context")
+                    # Check if URL matches the expected pattern
+                    if wait_for_url in current_url:
+                        print(f"✅ {self.account_name}: New tab URL matches expected pattern")
+                    else:
+                        print(f"⚠️ {self.account_name}: URL doesn't match pattern but continuing anyway")
 
-                # 7. Return the new tab URL and cookies
-                print(f"✅ {self.account_name}: Got auth URL from new tab: {current_url}")
+                    # 6. Get cookies from the context
+                    cookies = await new_page.context.cookies()
+                    print(f"ℹ️ {self.account_name}: Got {len(cookies)} cookies from context")
 
-                return {"success": True, "url": current_url, "cookies": cookies}
+                    # 7. Return the new tab URL and cookies
+                    print(f"✅ {self.account_name}: Got auth URL from new tab: {current_url}")
 
-            except Exception as e:
-                print(f"❌ {self.account_name}: Error getting auth URL: {e}")
-                await self._take_screenshot(page, "auth_url_error")
-                return {"success": False, "error": f"Error getting auth URL: {e}"}
-            finally:
-                await page.close()
-                if 'new_page' in locals():
-                    await new_page.close()
+                    return {"success": True, "url": current_url, "cookies": cookies}
+
+                except Exception as e:
+                    print(f"❌ {self.account_name}: Error getting auth URL: {e}")
+                    await self._take_screenshot(page, "auth_url_error")
+                    return {"success": False, "error": f"Error getting auth URL: {e}"}
+                finally:
+                    await page.close()
+                    if 'new_page' in locals():
+                        await new_page.close()
+
+
 
     async def get_auth_state(
         self,
