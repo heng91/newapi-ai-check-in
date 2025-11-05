@@ -106,7 +106,7 @@ class AppConfig:
                 api_user_key="new-api-user",
                 github_client_id="Ov23lidtiR4LeVZvVRNL",
                 linuxdo_client_id="KZUecGfhhDZMVnv8UtEdhOhf9sNOhqVX",
-                bypass_method="waf_cookies",
+                bypass_method=None,
             ),
         }
 

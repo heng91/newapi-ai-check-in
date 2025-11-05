@@ -7,7 +7,8 @@ import json
 import hashlib
 import os
 import tempfile
-from urllib.parse import urlparse
+from datetime import datetime
+from urllib.parse import urlparse, parse_qs
 
 import httpx
 from playwright.async_api import async_playwright
@@ -21,8 +22,15 @@ class CheckIn:
     account_config: AccountConfig
     account_name: str
     provider_config: ProviderConfig
+    cache_dir: str
 
-    def __init__(self, account_config: AccountConfig, provider_config: ProviderConfig, account_index: int):
+    def __init__(
+        self,
+        account_config: AccountConfig,
+        provider_config: ProviderConfig,
+        account_index: int,
+        cache_dir: str = "caches",
+    ):
         """初始化签到管理器
 
         Args:
@@ -31,6 +39,32 @@ class CheckIn:
         self.account_name = account_config.name or f"Account {account_index + 1}"
         self.account_info = account_config
         self.provider_config = provider_config
+        self.cache_dir = cache_dir
+        os.makedirs(self.cache_dir, exist_ok=True)
+
+    async def _take_screenshot(self, page, reason: str) -> None:
+        """截取当前页面的屏幕截图
+
+        Args:
+            page: Playwright 页面对象
+            reason: 截图原因描述
+        """
+        try:
+            # 创建 screenshots 目录
+            screenshots_dir = "screenshots"
+            os.makedirs(screenshots_dir, exist_ok=True)
+
+            # 生成文件名: 账号名_时间戳_原因.png
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            safe_account_name = "".join(c if c.isalnum() else "_" for c in self.account_name)
+            safe_reason = "".join(c if c.isalnum() else "_" for c in reason)
+            filename = f"{safe_account_name}_{timestamp}_{safe_reason}.png"
+            filepath = os.path.join(screenshots_dir, filename)
+
+            await page.screenshot(path=filepath, full_page=True)
+            print(f"📸 {self.account_name}: Screenshot saved to {filepath}")
+        except Exception as e:
+            print(f"⚠️ {self.account_name}: Failed to take screenshot: {e}")
 
     async def get_waf_cookies_with_playwright(self) -> dict | None:
         """使用 Playwright 获取 WAF cookies（隐私模式）"""
@@ -93,8 +127,97 @@ class CheckIn:
                     await page.close()
                     await context.close()
 
-    def get_auth_client_id(self, client: httpx.Client, headers: dict, provider: str) -> dict:
-        """获取状态信息"""
+    async def get_status_with_playwright(self) -> dict | None:
+        """使用 Playwright 获取状态信息并缓存
+        Returns:
+            状态数据字典
+        """
+        # 生成缓存文件路径
+        cache_file_path = f"{self.cache_dir}/{self.provider_config.name}_status.json"
+
+        # 检查缓存文件是否存在
+        if os.path.exists(cache_file_path):
+            try:
+                with open(cache_file_path, "r", encoding="utf-8") as f:
+                    cached_data = json.load(f)
+                    print(f"ℹ️ {self.account_name}: Loaded status from cache: {cache_file_path}")
+                    return cached_data
+            except Exception as e:
+                print(f"⚠️ {self.account_name}: Failed to load status cache: {e}")
+
+        print(f"ℹ️ {self.account_name}: Starting browser to get status")
+
+        async with async_playwright() as p:
+
+            with tempfile.TemporaryDirectory() as temp_dir:
+                context = await p.chromium.launch_persistent_context(
+                    user_data_dir=temp_dir,
+                    headless=False,
+                    user_agent=get_random_user_agent(),
+                    viewport={"width": 1920, "height": 1080},
+                    args=[
+                        "--disable-blink-features=AutomationControlled",
+                        "--disable-dev-shm-usage",
+                        "--disable-web-security",
+                        "--disable-features=VizDisplayCompositor",
+                        "--no-sandbox",
+                    ],
+                )
+
+                page = await context.new_page()
+
+                try:
+                    print(f"ℹ️ {self.account_name}: Access status page to get status from localStorage")
+                    await page.goto(self.provider_config.get_login_url(), wait_until="networkidle")
+
+                    try:
+                        await page.wait_for_function('document.readyState === "complete"', timeout=5000)
+                    except Exception:
+                        await page.wait_for_timeout(3000)
+
+                    # 从 localStorage 获取 status
+                    status_data = None
+                    try:
+                        status_str = await page.evaluate("() => localStorage.getItem('status')")
+                        if status_str:
+                            status_data = json.loads(status_str)
+                            print(f"✅ {self.account_name}: Got status from localStorage")
+
+                            # 保存到缓存文件
+                            self.cache_status_data(status_data, cache_file_path=cache_file_path)
+                        else:
+                            print(f"⚠️ {self.account_name}: No status found in localStorage")
+                    except Exception as e:
+                        print(f"⚠️ {self.account_name}: Error reading status from localStorage: {e}")
+
+                    return status_data
+
+                except Exception as e:
+                    print(f"❌ {self.account_name}: Error occurred while getting status: {e}")
+                    return None
+                finally:
+                    await page.close()
+                    await context.close()
+
+    def cache_status_data(self, status_data: dict, cache_file_path: str) -> None:
+        """缓存状态信息"""
+        try:
+            with open(cache_file_path, "w", encoding="utf-8") as f:
+                json.dump(status_data, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"⚠️ {self.account_name}: Failed to save status cache: {e}")
+
+    async def get_auth_client_id(self, client: httpx.Client, headers: dict, provider: str) -> dict:
+        """获取状态信息
+
+        Args:
+            client: httpx 客户端
+            headers: 请求头
+            provider: 提供商类型 (github/linuxdo)
+
+        Returns:
+            包含 success 和 client_id 或 error 的字典
+        """
         try:
             response = client.get(self.provider_config.get_status_url(), headers=headers, timeout=30)
 
@@ -104,6 +227,29 @@ class CheckIn:
                 except json.JSONDecodeError as json_err:
                     print(f"❌ {self.account_name}: Failed to parse JSON response")
                     print(f"    📄 Response content (first 500 chars): {response.text[:500]}")
+                    print(f"ℹ️ {self.account_name}: Attempting to get status from browser localStorage")
+
+                    # 尝试从浏览器 localStorage 获取状态
+                    try:
+                        status_data = await self.get_status_with_playwright()
+                        if status_data:
+                            oauth = status_data.get(f"{provider}_oauth", False)
+                            if not oauth:
+                                return {
+                                    "success": False,
+                                    "error": f"{provider} OAuth is not enabled.",
+                                }
+
+                            client_id = status_data.get(f"{provider}_client_id", "")
+                            if client_id:
+                                print(f"✅ {self.account_name}: Got client ID from localStorage: " f"{client_id}")
+                                return {
+                                    "success": True,
+                                    "client_id": client_id,
+                                }
+                    except Exception as browser_err:
+                        print(f"⚠️ {self.account_name}: Failed to get status from browser: " f"{browser_err}")
+
                     return {
                         "success": False,
                         "error": f"Failed to get client id: Invalid JSON response - {json_err}",
@@ -139,7 +285,117 @@ class CheckIn:
                 "error": f"Failed to get client id, {e}",
             }
 
-    def get_auth_state(self, client: httpx.Client, headers: dict) -> dict:
+    async def get_auth_state_with_playwright(self, status: dict, wait_for_url: str) -> dict:
+        """使用 Playwright 获取认证 URL 和 cookies
+
+        Args:
+            status: 要存储到 localStorage 的状态数据
+            wait_for_url: 要等待的 URL 模式
+
+        Returns:
+            包含 success、url、cookies 或 error 的字典
+        """
+        print(f"ℹ️ {self.account_name}: Starting browser to get auth URL")
+
+        async with async_playwright() as p:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                context = await p.chromium.launch_persistent_context(
+                    user_data_dir=temp_dir,
+                    headless=False,
+                    user_agent=get_random_user_agent(),
+                    viewport={"width": 1920, "height": 1080},
+                    args=[
+                        "--disable-blink-features=AutomationControlled",
+                        "--disable-dev-shm-usage",
+                        "--disable-web-security",
+                        "--disable-features=VizDisplayCompositor",
+                        "--no-sandbox",
+                    ],
+                )
+
+                page = await context.new_page()
+
+                try:
+                    # 1. Open the login page first
+                    print(f"ℹ️ {self.account_name}: Opening login page")
+                    await page.goto(self.provider_config.get_login_url(), wait_until="networkidle")
+
+                    # Wait for page to be fully loaded
+                    try:
+                        await page.wait_for_function('document.readyState === "complete"', timeout=5000)
+                    except Exception:
+                        await page.wait_for_timeout(3000)
+
+                    # 2. Store status in localStorage (after page is loaded)
+                    print(f"ℹ️ {self.account_name}: Storing status in localStorage")
+                    status_json = json.dumps(status, ensure_ascii=False)
+                    # Escape single quotes for JavaScript string literal
+                    status_json_escaped = status_json.replace("'", "\\'")
+                    await page.evaluate(f"() => localStorage.setItem('status', '{status_json_escaped}')")
+
+                    # 3. Reload the page to apply localStorage changes
+                    print(f"ℹ️ {self.account_name}: Reloading page after setting localStorage")
+                    await page.reload(wait_until="networkidle")
+
+                    # Wait for page to be fully loaded after reload
+                    try:
+                        await page.wait_for_function('document.readyState === "complete"', timeout=5000)
+                    except Exception:
+                        await page.wait_for_timeout(3000)
+
+                    # 4. Click the main button[0] and wait for new tab
+                    print(f"ℹ️ {self.account_name}: Clicking main button")
+                    buttons = await page.query_selector_all("main button")
+                    if buttons and len(buttons) > 0:
+                        # Wait for new tab to open when clicking the button
+                        async with context.expect_page() as new_page_info:
+                            await buttons[0].click()
+                        new_page = await new_page_info.value
+                        print(f"ℹ️ {self.account_name}: New tab opened")
+                    else:
+                        print(f"⚠️ {self.account_name}: No buttons found on page")
+                        await self._take_screenshot(page, "no_buttons_found")
+                        return {"success": False, "error": "No buttons found on login page"}
+
+                    # 5. Get the first URL of the new tab (don't wait for loading)
+                    print(f"ℹ️ {self.account_name}: Getting new tab's initial URL")
+                    # Wait a short moment for the URL to be set
+                    # await new_page.wait_for_timeout(1000)
+                    current_url = new_page.url
+                    print(f"ℹ️ {self.account_name}: New tab URL: {current_url}")
+
+                    # Check if URL matches the expected pattern
+                    if wait_for_url in current_url:
+                        print(f"✅ {self.account_name}: New tab URL matches expected pattern")
+                    else:
+                        print(f"⚠️ {self.account_name}: URL doesn't match pattern but continuing anyway")
+
+                    # 6. Get cookies from the context
+                    cookies = await context.cookies()
+                    print(f"ℹ️ {self.account_name}: Got {len(cookies)} cookies from context")
+
+                    # 7. Return the new tab URL and cookies
+                    print(f"✅ {self.account_name}: Got auth URL from new tab: {current_url}")
+
+                    return {"success": True, "url": current_url, "cookies": cookies}
+
+                except Exception as e:
+                    print(f"❌ {self.account_name}: Error getting auth URL: {e}")
+                    await self._take_screenshot(page, "auth_url_error")
+                    return {"success": False, "error": f"Error getting auth URL: {e}"}
+                finally:
+                    await page.close()
+                    await context.close()
+
+    async def get_auth_state(
+        self,
+        client: httpx.Client,
+        client_id: str,
+        headers: dict,
+        provider: str,
+        wait_for_url: str,
+        return_to_key: str = "return_to",
+    ) -> dict:
         """获取认证状态"""
         try:
             response = client.get(self.provider_config.get_auth_state_url(), headers=headers, timeout=30)
@@ -148,12 +404,48 @@ class CheckIn:
                 try:
                     data = response.json()
                 except json.JSONDecodeError as json_err:
-                    print(f"❌ {self.account_name}: Failed to parse JSON response")
+                    print(f"❌ {self.account_name}: Invalid JSON response - {json_err}")
                     print(f"    📄 Response content (first 500 chars): {response.text[:500]}")
-                    return {
-                        "success": False,
-                        "error": f"Failed to get auth state: Invalid JSON response - {json_err}",
-                    }
+
+                    print(f"ℹ️ {self.account_name}: Getting auth state from browser")
+                    auth_result = await self.get_auth_state_with_playwright(
+                        {f"{provider}_client_id": client_id, f"{provider}_oauth": True},
+                        wait_for_url,
+                    )
+
+                    if not auth_result.get("success"):
+                        error_msg = auth_result.get("error", "Unknown error")
+                        print(f"❌ {self.account_name}: {error_msg}")
+                        return False, {"error": "Failed to get auth URL with Playwright"}
+
+                    # 提取 return_to 参数
+                    auth_url = auth_result.get("url")
+                    print(f"ℹ️ {self.account_name}: Extracted auth url: {auth_url}")
+                    parsed_url = urlparse(auth_url)
+                    query_params = parse_qs(parsed_url.query)
+                    return_to = query_params.get(return_to_key, [None])[0]
+
+                    if return_to:
+                        print(f"ℹ️ {self.account_name}: Extracted return_to: {return_to}")
+
+                        # 从 return_to URL 中提取 state 参数
+                        return_to_parsed = urlparse(return_to)
+                        return_to_params = parse_qs(return_to_parsed.query)
+                        auth_state = return_to_params.get("state", [None])[0]
+
+                        if auth_state:
+                            print(f"ℹ️ {self.account_name}: Extracted state from return_to: {auth_state}")
+                            return {
+                                "success": True,
+                                "state": auth_state,
+                                "cookies": auth_result.get("cookies", []),
+                            }
+                        else:
+                            print(f"⚠️ {self.account_name}: No state parameter found in return_to URL")
+                            return False, {"error": "No state parameter found in return_to URL"}
+                    else:
+                        print(f"⚠️ {self.account_name}: No return_to parameter found in URL")
+                        return False, {"error": "No return_to parameter found in URL"}
 
                 if data.get("success"):
                     auth_data = data.get("data")
@@ -187,7 +479,7 @@ class CheckIn:
 
                     return {
                         "success": True,
-                        "auth_data": auth_data,
+                        "state": auth_data,
                         "cookies": playwright_cookies,  # 直接返回 Playwright 格式的 cookies
                     }
                 else:
@@ -327,9 +619,7 @@ class CheckIn:
         finally:
             client.close()
 
-    async def check_in_with_github(
-        self, username: str, password: str, waf_cookies: dict, cache_dir: str = ""
-    ) -> tuple[bool, dict]:
+    async def check_in_with_github(self, username: str, password: str, waf_cookies: dict) -> tuple[bool, dict]:
         """使用 GitHub 账号执行签到操作"""
         print(f"ℹ️ {self.account_name}: Executing check-in with GitHub account")
 
@@ -354,35 +644,38 @@ class CheckIn:
             # 获取 OAuth 客户端 ID
             # 优先使用 provider_config 中的 client_id
             if self.provider_config.github_client_id:
-                client_id = {
+                client_id_result = {
                     "success": True,
                     "client_id": self.provider_config.github_client_id,
                 }
-                print(
-                    f"ℹ️ {self.account_name}: Using GitHub client ID from config: "
-                    f"{client_id['client_id']}"
-                )
+                print(f"ℹ️ {self.account_name}: Using GitHub client ID from config: " f"{client_id_result['client_id']}")
             else:
-                client_id = self.get_auth_client_id(client, headers, "github")
-                if client_id and client_id.get("success"):
-                    print(f"ℹ️ {self.account_name}: Got client ID for GitHub: {client_id['client_id']}")
+                client_id_result = await self.get_auth_client_id(client, headers, "github")
+                if client_id_result and client_id_result.get("success"):
+                    print(f"ℹ️ {self.account_name}: Got client ID for GitHub: {client_id_result['client_id']}")
                 else:
-                    error_msg = client_id.get("error", "Unknown error")
+                    error_msg = client_id_result.get("error", "Unknown error")
                     print(f"❌ {self.account_name}: {error_msg}")
                     return False, {"error": "Failed to get GitHub client ID"}
 
-            # 获取 OAuth 认证状态
-            auth_state = self.get_auth_state(client, headers)
-            if auth_state and auth_state.get("success"):
-                print(f"ℹ️ {self.account_name}: Got auth state for GitHub: {auth_state['auth_data']}")
+            # # 获取 OAuth 认证状态
+            auth_state_result = await self.get_auth_state(
+                client=client,
+                client_id=client_id_result["client_id"],
+                headers=headers,
+                provider="github",
+                wait_for_url="https://github.com/login",
+            )
+            if auth_state_result and auth_state_result.get("success"):
+                print(f"ℹ️ {self.account_name}: Got auth state for GitHub: {auth_state_result['state']}")
             else:
-                error_msg = auth_state.get("error", "Unknown error")
+                error_msg = auth_state_result.get("error", "Unknown error")
                 print(f"❌ {self.account_name}: {error_msg}")
                 return False, {"error": "Failed to get GitHub auth state"}
 
             # 生成缓存文件路径
             username_hash = hashlib.sha256(username.encode("utf-8")).hexdigest()[:8]
-            cache_file_path = f"{cache_dir}/github_{username_hash}_storage_state.json"
+            cache_file_path = f"{self.cache_dir}/github_{username_hash}_storage_state.json"
 
             from sign_in_with_github import GitHubSignIn
 
@@ -394,9 +687,9 @@ class CheckIn:
             )
 
             success, result_data = await github.signin(
-                client_id=client_id["client_id"],
-                auth_state=auth_state["auth_data"],
-                auth_cookies=auth_state.get("cookies", []),
+                client_id=client_id_result["client_id"],
+                auth_state=auth_state_result.get("state"),
+                auth_cookies=auth_state_result.get("cookies", []),
                 cache_file_path=cache_file_path,
             )
 
@@ -419,7 +712,7 @@ class CheckIn:
             client.close()
 
     async def check_in_with_linuxdo(
-        self, username: str, password: str, waf_cookies: dict, cache_dir: str = "", use_camoufox: bool = True
+        self, username: str, password: str, waf_cookies: dict, use_camoufox: bool = True
     ) -> tuple[bool, dict]:
         """使用 Linux.do 账号执行签到操作
 
@@ -427,7 +720,6 @@ class CheckIn:
             username: Linux.do 用户名
             password: Linux.do 密码
             waf_cookies: WAF cookies
-            cache_dir: 缓存目录
             use_camoufox: 是否使用 Camoufox 绕过 Cloudflare (默认 True)
         """
         print(f"ℹ️ {self.account_name}: Executing check-in with Linux.do account")
@@ -453,35 +745,40 @@ class CheckIn:
             # 获取 OAuth 客户端 ID
             # 优先使用 provider_config 中的 client_id
             if self.provider_config.linuxdo_client_id:
-                client_id = {
+                client_id_result = {
                     "success": True,
                     "client_id": self.provider_config.linuxdo_client_id,
                 }
                 print(
-                    f"ℹ️ {self.account_name}: Using Linux.do client ID from config: "
-                    f"{client_id['client_id']}"
+                    f"ℹ️ {self.account_name}: Using Linux.do client ID from config: " f"{client_id_result['client_id']}"
                 )
             else:
-                client_id = self.get_auth_client_id(client, headers, "linuxdo")
-                if client_id and client_id.get("success"):
-                    print(f"ℹ️ {self.account_name}: Got client ID for Linux.do: {client_id['client_id']}")
+                client_id_result = await self.get_auth_client_id(client, headers, "linuxdo")
+                if client_id_result and client_id_result.get("success"):
+                    print(f"ℹ️ {self.account_name}: Got client ID for Linux.do: {client_id_result['client_id']}")
                 else:
-                    error_msg = client_id.get("error", "Unknown error")
+                    error_msg = client_id_result.get("error", "Unknown error")
                     print(f"❌ {self.account_name}: {error_msg}")
                     return False, {"error": "Failed to get Linux.do client ID"}
 
             # 获取 OAuth 认证状态
-            auth_state = self.get_auth_state(client, headers)
-            if auth_state and auth_state.get("success"):
-                print(f"ℹ️ {self.account_name}: " f"Got auth state for Linux.do: {auth_state['auth_data']}")
+            auth_state_result = await self.get_auth_state(
+                client=client,
+                client_id=client_id_result["client_id"],
+                headers=headers,
+                provider="linuxdo",
+                wait_for_url="https://linux.do/login",
+            )
+            if auth_state_result and auth_state_result.get("success"):
+                print(f"ℹ️ {self.account_name}: Got auth state for Linux.do: {auth_state_result['state']}")
             else:
-                error_msg = auth_state.get("error", "Unknown error")
+                error_msg = auth_state_result.get("error", "Unknown error")
                 print(f"❌ {self.account_name}: {error_msg}")
                 return False, {"error": "Failed to get Linux.do auth state"}
 
             # 生成缓存文件路径
             username_hash = hashlib.sha256(username.encode("utf-8")).hexdigest()[:8]
-            cache_file_path = f"{cache_dir}/linuxdo_{username_hash}_storage_state.json"
+            cache_file_path = f"{self.cache_dir}/linuxdo_{username_hash}_storage_state.json"
 
             from sign_in_with_linuxdo import LinuxDoSignIn
 
@@ -494,16 +791,16 @@ class CheckIn:
             # 如果使用 Camoufox 绕过
             if use_camoufox:
                 success, result_data = await linuxdo.signin_bypass(
-                    client_id=client_id["client_id"],
-                    auth_state=auth_state["auth_data"],
-                    auth_cookies=auth_state.get("cookies", []),
+                    client_id=client_id_result["client_id"],
+                    auth_state=auth_state_result["state"],
+                    auth_cookies=auth_state_result.get("cookies", []),
                     cache_file_path=cache_file_path,
                 )
             else:
                 success, result_data = await linuxdo.signin(
-                    client_id=client_id["client_id"],
-                    auth_state=auth_state["auth_data"],
-                    auth_cookies=auth_state.get("cookies", []),
+                    client_id=client_id_result["client_id"],
+                    auth_state=auth_state_result["state"],
+                    auth_cookies=auth_state_result.get("cookies", []),
                     cache_file_path=cache_file_path,
                 )
 
@@ -536,9 +833,6 @@ class CheckIn:
                 print(f"✅ {self.account_name}: WAF cookies obtained")
         else:
             print(f"ℹ️ {self.account_name}: Bypass WAF not required, using user cookies directly")
-
-        cache_dir = "caches"
-        os.makedirs(cache_dir, exist_ok=True)
 
         # 解析账号配置
         cookies_data = self.account_info.cookies
@@ -584,7 +878,7 @@ class CheckIn:
                     results.append(("github", False, {"error": "Incomplete GitHub account information"}))
                 else:
                     # 使用 GitHub 账号执行签到
-                    success, user_info = await self.check_in_with_github(username, password, waf_cookies, cache_dir)
+                    success, user_info = await self.check_in_with_github(username, password, waf_cookies)
                     if success:
                         print(f"✅ {self.account_name}: GitHub authentication successful")
                         results.append(("github", True, user_info))
@@ -608,7 +902,7 @@ class CheckIn:
                     # 使用 Linux.do 账号执行签到
                     use_camoufox = linuxdo_info.get("use_camoufox", True)
                     success, user_info = await self.check_in_with_linuxdo(
-                        username, password, waf_cookies, cache_dir, use_camoufox=use_camoufox
+                        username, password, waf_cookies, use_camoufox=use_camoufox
                     )
                     if success:
                         print(f"✅ {self.account_name}: Linux.do authentication successful")
