@@ -103,7 +103,7 @@ class CheckIn:
                     data = response.json()
                 except json.JSONDecodeError as json_err:
                     print(f"❌ {self.account_name}: Failed to parse JSON response")
-                    print(f"    📄 Response content (first 500 chars): {response.text}")
+                    print(f"    📄 Response content (first 500 chars): {response.text[:500]}")
                     return {
                         "success": False,
                         "error": f"Failed to get client id: Invalid JSON response - {json_err}",
@@ -149,7 +149,7 @@ class CheckIn:
                     data = response.json()
                 except json.JSONDecodeError as json_err:
                     print(f"❌ {self.account_name}: Failed to parse JSON response")
-                    print(f"    📄 Response content (first 500 chars): {response.text}")
+                    print(f"    📄 Response content (first 500 chars): {response.text[:500]}")
                     return {
                         "success": False,
                         "error": f"Failed to get auth state: Invalid JSON response - {json_err}",
@@ -352,13 +352,24 @@ class CheckIn:
             }
 
             # 获取 OAuth 客户端 ID
-            client_id = self.get_auth_client_id(client, headers, "github")
-            if client_id and client_id.get("success"):
-                print(f"ℹ️ {self.account_name}: Got client ID for GitHub: {client_id['client_id']}")
+            # 优先使用 provider_config 中的 client_id
+            if self.provider_config.github_client_id:
+                client_id = {
+                    "success": True,
+                    "client_id": self.provider_config.github_client_id,
+                }
+                print(
+                    f"ℹ️ {self.account_name}: Using GitHub client ID from config: "
+                    f"{client_id['client_id']}"
+                )
             else:
-                error_msg = client_id.get("error", "Unknown error")
-                print(f"❌ {self.account_name}: {error_msg}")
-                return False, {"error": "Failed to get GitHub client ID"}
+                client_id = self.get_auth_client_id(client, headers, "github")
+                if client_id and client_id.get("success"):
+                    print(f"ℹ️ {self.account_name}: Got client ID for GitHub: {client_id['client_id']}")
+                else:
+                    error_msg = client_id.get("error", "Unknown error")
+                    print(f"❌ {self.account_name}: {error_msg}")
+                    return False, {"error": "Failed to get GitHub client ID"}
 
             # 获取 OAuth 认证状态
             auth_state = self.get_auth_state(client, headers)
@@ -440,13 +451,24 @@ class CheckIn:
             }
 
             # 获取 OAuth 客户端 ID
-            client_id = self.get_auth_client_id(client, headers, "linuxdo")
-            if client_id and client_id.get("success"):
-                print(f"ℹ️ {self.account_name}: " f"Got client ID for Linux.do: {client_id['client_id']}")
+            # 优先使用 provider_config 中的 client_id
+            if self.provider_config.linuxdo_client_id:
+                client_id = {
+                    "success": True,
+                    "client_id": self.provider_config.linuxdo_client_id,
+                }
+                print(
+                    f"ℹ️ {self.account_name}: Using Linux.do client ID from config: "
+                    f"{client_id['client_id']}"
+                )
             else:
-                error_msg = client_id.get("error", "Unknown error")
-                print(f"❌ {self.account_name}: {error_msg}")
-                return False, {"error": "Failed to get Linux.do client ID"}
+                client_id = self.get_auth_client_id(client, headers, "linuxdo")
+                if client_id and client_id.get("success"):
+                    print(f"ℹ️ {self.account_name}: Got client ID for Linux.do: {client_id['client_id']}")
+                else:
+                    error_msg = client_id.get("error", "Unknown error")
+                    print(f"❌ {self.account_name}: {error_msg}")
+                    return False, {"error": "Failed to get Linux.do client ID"}
 
             # 获取 OAuth 认证状态
             auth_state = self.get_auth_state(client, headers)

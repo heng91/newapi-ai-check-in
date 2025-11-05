@@ -21,6 +21,8 @@ class ProviderConfig:
     sign_in_path: str | None = "/api/user/sign_in"
     user_info_path: str = "/api/user/self"
     api_user_key: str = "new-api-user"
+    github_client_id: str | None = None
+    linuxdo_client_id: str | None = None
     bypass_method: Literal["waf_cookies"] | None = None
 
     @classmethod
@@ -38,6 +40,8 @@ class ProviderConfig:
             sign_in_path=data.get("sign_in_path", "/api/user/sign_in"),
             user_info_path=data.get("user_info_path", "/api/user/self"),
             api_user_key=data.get("api_user_key", "new-api-user"),
+            github_client_id=data.get("github_client_id"),
+            linuxdo_client_id=data.get("linuxdo_client_id"),
             bypass_method=data.get("bypass_method"),
         )
 
@@ -87,6 +91,8 @@ class AppConfig:
                 sign_in_path="/api/user/sign_in",
                 user_info_path="/api/user/self",
                 api_user_key="new-api-user",
+                github_client_id="Ov23liOwlnIiYoF3bUqw",
+                linuxdo_client_id="8w2uZtoWH9AUXrZr1qeCEEmvXLafea3c",
                 bypass_method="waf_cookies",
             ),
             "agentrouter": ProviderConfig(
@@ -98,6 +104,8 @@ class AppConfig:
                 sign_in_path=None,  # 无需签到接口，查询用户信息时自动完成签到
                 user_info_path="/api/user/self",
                 api_user_key="new-api-user",
+                github_client_id="Ov23lidtiR4LeVZvVRNL",
+                linuxdo_client_id="KZUecGfhhDZMVnv8UtEdhOhf9sNOhqVX",
                 bypass_method=None,
             ),
         }
