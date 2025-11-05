@@ -83,7 +83,7 @@ class CheckIn:
 
                 try:
                     print(f"ℹ️ {self.account_name}: Access login page to get initial cookies")
-                    await page.goto(self.provider_config.get_login_url(), wait_until="domcontentloaded")
+                    await page.goto(self.provider_config.get_login_url(), wait_until="networkidle")
 
                     try:
                         await page.wait_for_function('document.readyState === "complete"', timeout=5000)
@@ -138,7 +138,7 @@ class CheckIn:
 
                 try:
                     print(f"ℹ️ {self.account_name}: Access status page to get status from localStorage")
-                    await page.goto(self.provider_config.get_login_url(), wait_until="domcontentloaded")
+                    await page.goto(self.provider_config.get_login_url(), wait_until="networkidle")
 
                     try:
                         await page.wait_for_function('document.readyState === "complete"', timeout=5000)
@@ -269,7 +269,7 @@ class CheckIn:
                 try:
                     # 1. Open the login page first
                     print(f"ℹ️ {self.account_name}: Opening login page")
-                    await page.goto(self.provider_config.get_login_url(), wait_until="domcontentloaded")
+                    await page.goto(self.provider_config.get_login_url(), wait_until="networkidle")
 
                     # Wait for page to be fully loaded
                     try:
@@ -286,7 +286,7 @@ class CheckIn:
 
                     # 3. Reload the page to apply localStorage changes
                     print(f"ℹ️ {self.account_name}: Reloading page after setting localStorage")
-                    await page.reload(wait_until="domcontentloaded")
+                    await page.reload(wait_until="networkidle")
 
                     # Wait for page to be fully loaded after reload
                     try:
