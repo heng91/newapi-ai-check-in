@@ -42,7 +42,7 @@ class CheckIn:
                 context = await p.chromium.launch_persistent_context(
                     user_data_dir=temp_dir,
                     headless=False,
-                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
+                    user_agent=get_random_user_agent(),
                     viewport={"width": 1920, "height": 1080},
                     args=[
                         "--disable-blink-features=AutomationControlled",
