@@ -90,7 +90,7 @@ class CheckIn:
                     except Exception:
                         await page.wait_for_timeout(3000)
 
-                    cookies = await page.context.cookies()
+                    cookies = await browser.cookies()
 
                     waf_cookies = {}
                     for cookie in cookies:
@@ -264,10 +264,6 @@ class CheckIn:
                 humanize=True,
                 locale="en-US",
             ) as browser:
-                # 获取初始页面数量
-                initial_page_count = len(browser.contexts[0].pages) if browser.contexts else 0
-                print(f"ℹ️ {self.account_name}: Initial page count: {initial_page_count}")
-
                 page = await browser.new_page()
 
                 try:
@@ -302,30 +298,12 @@ class CheckIn:
                     print(f"ℹ️ {self.account_name}: Clicking main button")
                     buttons = await page.query_selector_all("main button")
                     if buttons and len(buttons) > 0:
-                        # 点击按钮前先获取当前页面数量
-                        before_click_page_count = len(browser.contexts[0].pages)
-                        print(f"ℹ️ {self.account_name}: Page count before click: {before_click_page_count}")
+                         # Wait for new tab to open when clicking the button
+                        async with browser.expect_page() as new_page_info:
+                            await buttons[0].click()
+                        new_page = await new_page_info.value
+                        print(f"ℹ️ {self.account_name}: New tab opened")
 
-                        # 点击按钮
-                        await buttons[0].click()
-                        print(f"ℹ️ {self.account_name}: Button clicked, waiting for new tab")
-
-                        # 等待新页面出现
-                        new_page = None
-                        for i in range(30):  # 最多等待3秒（30次 * 100ms）
-                            await page.wait_for_timeout(100)
-                            current_page_count = len(browser.contexts[0].pages)
-                            if current_page_count > before_click_page_count:
-                                # 找到新页面
-                                pages = browser.contexts[0].pages
-                                new_page = pages[-1]  # 取最后一个页面
-                                print(f"ℹ️ {self.account_name}: New tab detected")
-                                break
-
-                        if new_page is None:
-                            print(f"❌ {self.account_name}: No new tab opened after clicking button")
-                            await self._take_screenshot(page, "no_new_tab")
-                            return {"success": False, "error": "No new tab opened"}
                     else:
                         print(f"⚠️ {self.account_name}: No buttons found on page")
                         await self._take_screenshot(page, "no_buttons_found")
@@ -342,9 +320,9 @@ class CheckIn:
                     else:
                         print(f"⚠️ {self.account_name}: URL doesn't match pattern but continuing anyway")
 
-                    # 6. Get cookies from the context
-                    cookies = await new_page.context.cookies()
-                    print(f"ℹ️ {self.account_name}: Got {len(cookies)} cookies from context")
+                    # 6. Get cookies from the browser
+                    cookies = await browser.cookies()
+                    print(f"ℹ️ {self.account_name}: Got {len(cookies)} cookies from browser")
 
                     # 7. Return the new tab URL and cookies
                     print(f"✅ {self.account_name}: Got auth URL from new tab: {current_url}")
