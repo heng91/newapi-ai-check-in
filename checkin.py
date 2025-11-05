@@ -274,7 +274,7 @@ class CheckIn:
                     except Exception:
                         await page.wait_for_timeout(3000)
 
-                    self._take_screenshot(page, "login_page_opened")
+                    await self._take_screenshot(page, "login_page_opened")
 
                     # 2. Store status in localStorage (after page is loaded)
                     print(f"ℹ️ {self.account_name}: Storing status in localStorage")
@@ -292,8 +292,8 @@ class CheckIn:
                         await page.wait_for_function('document.readyState === "complete"', timeout=5000)
                     except Exception:
                         await page.wait_for_timeout(3000)
-                        
-                    self._take_screenshot(page, "login_page_reloaded")
+
+                    await self._take_screenshot(page, "login_page_reloaded")
 
                     # 4. Click the main button[0] and wait for new tab
                     print(f"ℹ️ {self.account_name}: Clicking main button")
@@ -310,8 +310,8 @@ class CheckIn:
                         await self._take_screenshot(page, "no_buttons_found")
                         return {"success": False, "error": "No buttons found on login page"}
 
-                    self._take_screenshot(new_page, "auth_page_opened")
-                    
+                    await self._take_screenshot(new_page, "auth_page_opened")
+
                     # 5. Get the first URL of the new tab (don't wait for loading)
                     print(f"ℹ️ {self.account_name}: New tab URL: {new_page.url}")
 
