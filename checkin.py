@@ -99,7 +99,16 @@ class CheckIn:
             response = client.get(self.provider_config.get_status_url(), headers=headers, timeout=30)
 
             if response.status_code == 200:
-                data = response.json()
+                try:
+                    data = response.json()
+                except json.JSONDecodeError as json_err:
+                    print(f"❌ {self.account_name}: Failed to parse JSON response")
+                    print(f"📄 Response content (first 500 chars): {response.text[:500]}")
+                    return {
+                        "success": False,
+                        "error": f"Failed to get client id: Invalid JSON response - {json_err}",
+                    }
+
                 if data.get("success"):
                     status_data = data.get("data", {})
                     oauth = status_data.get(f"{provider}_oauth", False)
@@ -114,6 +123,12 @@ class CheckIn:
                         "success": True,
                         "client_id": client_id,
                     }
+                else:
+                    error_msg = data.get("message", "Unknown error")
+                    return {
+                        "success": False,
+                        "error": f"Failed to get client id: {error_msg}",
+                    }
             return {
                 "success": False,
                 "error": f"Failed to get client id: HTTP {response.status_code}",
@@ -121,7 +136,7 @@ class CheckIn:
         except Exception as e:
             return {
                 "success": False,
-                "error": f"Failed to get client id: {e}",
+                "error": f"Failed to get client id, {e}",
             }
 
     def get_auth_state(self, client: httpx.Client, headers: dict) -> dict:
@@ -130,7 +145,16 @@ class CheckIn:
             response = client.get(self.provider_config.get_auth_state_url(), headers=headers, timeout=30)
 
             if response.status_code == 200:
-                data = response.json()
+                try:
+                    data = response.json()
+                except json.JSONDecodeError as json_err:
+                    print(f"❌ {self.account_name}: Failed to parse JSON response")
+                    print(f"📄 Response content (first 500 chars): {response.text[:500]}")
+                    return {
+                        "success": False,
+                        "error": f"Failed to get auth state: Invalid JSON response - {json_err}",
+                    }
+
                 if data.get("success"):
                     auth_data = data.get("data")
 
@@ -143,7 +167,10 @@ class CheckIn:
                             http_only = cookie.httponly if cookie.has_nonstandard_attr("httponly") else False
                             same_site = cookie.samesite if cookie.has_nonstandard_attr("samesite") else "Lax"
                             print(
-                                f"ℹ️ Cookie: {cookie.name}, Domain: {cookie.domain}, Path: {cookie.path}, Expires: {cookie.expires}, HttpOnly: {http_only}, Secure: {cookie.secure}, SameSite: {same_site}"
+                                f"ℹ️ Cookie: {cookie.name}, Domain: {cookie.domain}, "
+                                f"Path: {cookie.path}, Expires: {cookie.expires}, "
+                                f"HttpOnly: {http_only}, Secure: {cookie.secure}, "
+                                f"SameSite: {same_site}"
                             )
                             playwright_cookies.append(
                                 {
@@ -163,6 +190,12 @@ class CheckIn:
                         "auth_data": auth_data,
                         "cookies": playwright_cookies,  # 直接返回 Playwright 格式的 cookies
                     }
+                else:
+                    error_msg = data.get("message", "Unknown error")
+                    return {
+                        "success": False,
+                        "error": f"Failed to get auth state: {error_msg}",
+                    }
             return {
                 "success": False,
                 "error": f"Failed to get auth state: HTTP {response.status_code}",
@@ -170,7 +203,7 @@ class CheckIn:
         except Exception as e:
             return {
                 "success": False,
-                "error": f"Failed to get auth state: {e}",
+                "error": f"Failed to get auth state, {e}",
             }
 
     def get_user_info(self, client: httpx.Client, headers: dict) -> dict:
@@ -179,7 +212,16 @@ class CheckIn:
             response = client.get(self.provider_config.get_user_info_url(), headers=headers, timeout=30)
 
             if response.status_code == 200:
-                data = response.json()
+                try:
+                    data = response.json()
+                except json.JSONDecodeError as json_err:
+                    print(f"❌ {self.account_name}: Failed to parse JSON response")
+                    print(f"📄 Response content (first 500 chars): {response.text[:500]}")
+                    return {
+                        "success": False,
+                        "error": f"Failed to get user info: Invalid JSON response - {json_err}",
+                    }
+
                 if data.get("success"):
                     user_data = data.get("data", {})
                     quota = round(user_data.get("quota", 0) / 500000, 2)
@@ -190,6 +232,12 @@ class CheckIn:
                         "used_quota": used_quota,
                         "display": f"Current balance: ${quota}, Used: ${used_quota}",
                     }
+                else:
+                    error_msg = data.get("message", "Unknown error")
+                    return {
+                        "success": False,
+                        "error": f"Failed to get user info: {error_msg}",
+                    }
             return {
                 "success": False,
                 "error": f"Failed to get user info: HTTP {response.status_code}",
@@ -197,7 +245,7 @@ class CheckIn:
         except Exception as e:
             return {
                 "success": False,
-                "error": f"Failed to get user info: {e}",
+                "error": f"Failed to get user info, {e}",
             }
 
     def execute_check_in(self, client, headers: dict):
