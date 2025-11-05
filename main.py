@@ -167,7 +167,7 @@ async def main():
     from datetime import datetime
     from utils.notify import notify
 
-    print("🚀 newapi.ai multi-account auto check-in script started (using Playwright)")
+    print("🚀 newapi.ai multi-account auto check-in script started (using Camoufox)")
     print(f'🕒 Execution time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
 
     app_config = AppConfig.load_from_env()

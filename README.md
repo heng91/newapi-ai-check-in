@@ -11,8 +11,9 @@
 
 - ✅ 单个/多账号自动签到
 - ✅ 多种机器人通知（可选）
-- ✅ linux.do 登录认证 (with Cloudflare bypass)
+- ✅ linux.do 登录认证
 - ✅ github 登录认证 (with OTP)
+- ✅ Cloudflare bypass
 
 ## 使用方法
 
@@ -53,7 +54,6 @@
       "linux.do": {
         "username": "user2",
         "password": "pass2",
-        "use_camoufox": false
       }
     }
   ]
@@ -68,7 +68,6 @@
 - `linux.do`(可选)：用于登录身份验证
   - `username`: 用户名
   - `password`: 密码
-  - `use_camoufox`: 使用 Camoufox, 默认为 `true`
 - `github`(可选)：用于登录身份验证
   - `username`: 用户名
   - `password`: 密码
@@ -175,8 +174,8 @@
 # 安装所有依赖
 uv sync --dev
 
-# 安装 Playwright 浏览器
-playwright install chromium
+# 安装 Camoufox 浏览器
+python3 -m camoufox fetch
 
 # 按 .env.example 创建 .env
 uv run main.py
@@ -187,8 +186,8 @@ uv run main.py
 ```bash
 uv sync --dev
 
-# 安装 Playwright 浏览器
-playwright install chromium
+# 安装 Camoufox 浏览器
+python3 -m camoufox fetch
 
 # 运行测试
 uv run pytest tests/

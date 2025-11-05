@@ -16,7 +16,6 @@ from utils.config import AccountConfig, ProviderConfig
 from utils.browser_utils import parse_cookies, get_random_user_agent
 
 
-
 class CheckIn:
     """newapi.ai 签到管理类"""
 
@@ -47,7 +46,7 @@ class CheckIn:
         """截取当前页面的屏幕截图
 
         Args:
-            page: Playwright 页面对象
+            page: Camoufox 页面对象
             reason: 截图原因描述
         """
         try:
@@ -118,7 +117,6 @@ class CheckIn:
                 finally:
                     await page.close()
 
-
     async def get_status_with_browser(self) -> dict | None:
         """使用 Camoufox 获取状态信息并缓存
         Returns:
@@ -164,7 +162,6 @@ class CheckIn:
                     return None
                 finally:
                     await page.close()
-
 
     async def get_auth_client_id(self, client: httpx.Client, headers: dict, provider: str) -> dict:
         """获取状态信息
@@ -286,7 +283,7 @@ class CheckIn:
 
                     # 3. Reload the page to apply localStorage changes
                     print(f"ℹ️ {self.account_name}: Reloading page after setting localStorage")
-                    await page.reload(wait_until="networkidle")
+                    await page.reload()
 
                     # Wait for page to be fully loaded after reload
                     try:
@@ -298,7 +295,7 @@ class CheckIn:
                     print(f"ℹ️ {self.account_name}: Clicking main button")
                     buttons = await page.query_selector_all("main button")
                     if buttons and len(buttons) > 0:
-                         # Wait for new tab to open when clicking the button
+                        # Wait for new tab to open when clicking the button
                         async with browser.expect_page() as new_page_info:
                             await buttons[0].click()
                         new_page = await new_page_info.value
@@ -369,7 +366,7 @@ class CheckIn:
                     if not auth_result.get("success"):
                         error_msg = auth_result.get("error", "Unknown error")
                         print(f"❌ {self.account_name}: {error_msg}")
-                        return False, {"error": "Failed to get auth URL with Playwright"}
+                        return False, {"error": "Failed to get auth URL with browser"}
 
                     # 提取 return_to 参数
                     auth_url = auth_result.get("url")
@@ -403,7 +400,7 @@ class CheckIn:
                 if data.get("success"):
                     auth_data = data.get("data")
 
-                    # 将 httpx Cookies 对象转换为 Playwright 格式
+                    # 将 httpx Cookies 对象转换为 Camoufox 格式
                     cookies = []
                     if response.cookies:
                         parsed_domain = urlparse(self.provider_config.origin).netloc
@@ -433,7 +430,7 @@ class CheckIn:
                     return {
                         "success": True,
                         "state": auth_data,
-                        "cookies": cookies,  # 直接返回 Playwright 格式的 cookies
+                        "cookies": cookies,  # 直接返回 Camoufox 格式的 cookies
                     }
                 else:
                     error_msg = data.get("message", "Unknown error")
@@ -665,7 +662,10 @@ class CheckIn:
             client.close()
 
     async def check_in_with_linuxdo(
-        self, username: str, password: str, waf_cookies: dict, use_camoufox: bool = True
+        self,
+        username: str,
+        password: str,
+        waf_cookies: dict,
     ) -> tuple[bool, dict]:
         """使用 Linux.do 账号执行签到操作
 
@@ -673,7 +673,6 @@ class CheckIn:
             username: Linux.do 用户名
             password: Linux.do 密码
             waf_cookies: WAF cookies
-            use_camoufox: 是否使用 Camoufox 绕过 Cloudflare (默认 True)
         """
         print(f"ℹ️ {self.account_name}: Executing check-in with Linux.do account")
 
@@ -741,21 +740,13 @@ class CheckIn:
                 username=username,
                 password=password,
             )
-            # 如果使用 Camoufox 绕过
-            if use_camoufox:
-                success, result_data = await linuxdo.signin_bypass(
-                    client_id=client_id_result["client_id"],
-                    auth_state=auth_state_result["state"],
-                    auth_cookies=auth_state_result.get("cookies", []),
-                    cache_file_path=cache_file_path,
-                )
-            else:
-                success, result_data = await linuxdo.signin(
-                    client_id=client_id_result["client_id"],
-                    auth_state=auth_state_result["state"],
-                    auth_cookies=auth_state_result.get("cookies", []),
-                    cache_file_path=cache_file_path,
-                )
+
+            success, result_data = await linuxdo.signin(
+                client_id=client_id_result["client_id"],
+                auth_state=auth_state_result["state"],
+                auth_cookies=auth_state_result.get("cookies", []),
+                cache_file_path=cache_file_path,
+            )
 
             # 检查是否成功获取 cookies 和 api_user
             if success and result_data.get("cookies") and result_data.get("api_user"):
@@ -853,9 +844,10 @@ class CheckIn:
                     results.append(("linux.do", False, {"error": "Incomplete Linux.do account information"}))
                 else:
                     # 使用 Linux.do 账号执行签到
-                    use_camoufox = linuxdo_info.get("use_camoufox", True)
                     success, user_info = await self.check_in_with_linuxdo(
-                        username, password, waf_cookies, use_camoufox=use_camoufox
+                        username,
+                        password,
+                        waf_cookies,
                     )
                     if success:
                         print(f"✅ {self.account_name}: Linux.do authentication successful")

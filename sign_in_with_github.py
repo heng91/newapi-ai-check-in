@@ -8,8 +8,7 @@ import os
 import tempfile
 from urllib.parse import urlparse
 from datetime import datetime
-
-from playwright.async_api import async_playwright
+from camoufox.async_api import AsyncCamoufox
 from utils.browser_utils import filter_cookies
 from utils.config import ProviderConfig
 from utils.wait_for_secrets import WaitForSecrets
@@ -42,7 +41,7 @@ class GitHubSignIn:
         """截取当前页面的屏幕截图
 
         Args:
-            page: Playwright 页面对象
+            page: Camoufox 页面对象
             reason: 截图原因描述
         """
         try:
@@ -83,22 +82,14 @@ class GitHubSignIn:
         print(f"ℹ️ {self.account_name}: Executing sign-in with GitHub account")
         print(f"ℹ️ {self.account_name}: Using client_id: {client_id}, auth_state: {auth_state}")
 
-        async with async_playwright() as p:
-            with tempfile.TemporaryDirectory() as temp_dir:
-                context = await p.chromium.launch_persistent_context(
-                    user_data_dir=temp_dir,
-                    headless=False,
-                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
-                    viewport={"width": 1920, "height": 1080},
-                    args=[
-                        "--disable-blink-features=AutomationControlled",
-                        "--disable-dev-shm-usage",
-                        "--disable-web-security",
-                        "--disable-features=VizDisplayCompositor",
-                        "--no-sandbox",
-                    ],
-                )
-
+        with tempfile.TemporaryDirectory() as temp_dir:
+            async with AsyncCamoufox(
+                persistent_context=True,
+                user_data_dir=temp_dir,
+                headless=False,
+                humanize=True,
+                locale="en-US",
+            ) as browser:
                 # 检查缓存文件是否存在，从缓存文件中恢复会话 cookies
                 if os.path.exists(cache_file_path):
                     print(f"ℹ️ {self.account_name}: Found cache file, restoring session state")
@@ -109,7 +100,7 @@ class GitHubSignIn:
                             if cookies:
                                 # 获取域名用于设置 cookies
                                 parsed_domain = urlparse(self.provider_config.origin).netloc
-                                playwright_cookies = []
+                                camoufox_cookies = []
                                 for cookie in cookies:
                                     cookie_data = {
                                         "name": cookie["name"],
@@ -121,10 +112,10 @@ class GitHubSignIn:
                                         "secure": cookie.get("secure", False),
                                         "sameSite": cookie.get("sameSite", "Lax"),
                                     }
-                                    playwright_cookies.append(cookie_data)
+                                    camoufox_cookies.append(cookie_data)
 
-                                await context.add_cookies(playwright_cookies)
-                                print(f"✅ {self.account_name}: Restored {len(playwright_cookies)} cookies from cache")
+                                await browser.add_cookies(camoufox_cookies)
+                                print(f"✅ {self.account_name}: Restored {len(camoufox_cookies)} cookies from cache")
                             else:
                                 print(f"⚠️ {self.account_name}: No cookies found in cache file")
                     except json.JSONDecodeError as e:
@@ -138,12 +129,12 @@ class GitHubSignIn:
 
                 # 设置从 auth_state 获取的 session cookies 到页面上下文
                 if auth_cookies:
-                    await context.add_cookies(auth_cookies)
+                    await browser.add_cookies(auth_cookies)
                     print(f"ℹ️ {self.account_name}: Set {len(auth_cookies)} auth cookies from provider")
                 else:
                     print(f"ℹ️ {self.account_name}: No auth cookies to set")
 
-                page = await context.new_page()
+                page = await browser.new_page()
 
                 try:
                     # 检查是否已经登录（通过缓存恢复）
@@ -237,7 +228,7 @@ class GitHubSignIn:
                                 pass
 
                             # 保存新的会话状态
-                            await context.storage_state(path=cache_file_path)
+                            await browser.storage_state(path=cache_file_path)
                             print(f"✅ {self.account_name}: Session state saved to cache")
 
                         except Exception as e:
@@ -298,7 +289,7 @@ class GitHubSignIn:
                             print(f"✅ {self.account_name}: OAuth authorization successful")
 
                             # 提取 session cookie，只保留与 provider domain 匹配的
-                            cookies = await page.context.cookies()
+                            cookies = await browser.cookies()
                             user_cookies = filter_cookies(cookies, self.provider_config.origin)
 
                             return True, {"cookies": user_cookies, "api_user": api_user}
@@ -321,4 +312,3 @@ class GitHubSignIn:
                     return False, {"error": "GitHub page navigation error"}
                 finally:
                     await page.close()
-                    await context.close()
