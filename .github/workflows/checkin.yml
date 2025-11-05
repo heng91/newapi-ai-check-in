@@ -110,6 +110,52 @@ jobs:
         restore-keys: |
           balance-hash-
 
+    - name: 预热会话
+      shell: pwsh
+      run: |
+        Write-Host "ℹ️ Warming up session with agentrouter.org..."
+        try {
+          $response = Invoke-WebRequest -Uri 'https://agentrouter.org/api/oauth/state' `
+            -Method GET `
+            -Headers @{
+              'Accept' = 'application/json, text/plain, */*'
+              'Accept-Language' = 'en,en-US;q=0.9,zh;q=0.8,en-CN;q=0.7,zh-CN;q=0.6'
+              'Cache-Control' = 'no-store'
+              'Connection' = 'keep-alive'
+              'New-API-User' = '-1'
+              'Pragma' = 'no-cache'
+              'Referer' = 'https://agentrouter.org/login'
+              'Sec-Fetch-Dest' = 'empty'
+              'Sec-Fetch-Mode' = 'cors'
+              'Sec-Fetch-Site' = 'same-origin'
+              'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36'
+              'sec-ch-ua' = '"Google Chrome";v="141", "Not?A_Brand";v="8", "Chromium";v="141"'
+              'sec-ch-ua-mobile' = '?0'
+              'sec-ch-ua-platform' = '"Windows"'
+            } `
+            -SessionVariable 'session' `
+            -ErrorAction Stop
+
+          Write-Host "✅ Session warmed up successfully"
+          Write-Host "Response status: $($response.StatusCode)"
+          Write-Host "Response body:"
+          Write-Host $response.Content
+        }
+        catch {
+          Write-Host "⚠️ Session warmup failed (non-critical): $($_.Exception.Message)"
+          if ($_.Exception.Response) {
+            Write-Host "Error response status: $($_.Exception.Response.StatusCode.value__)"
+            try {
+              $reader = New-Object System.IO.StreamReader($_.Exception.Response.GetResponseStream())
+              $errorBody = $reader.ReadToEnd()
+              Write-Host "Error response body: $errorBody"
+            }
+            catch {
+              Write-Host "Could not read error response body"
+            }
+          }
+        }
+
     - name: 执行签到
       env:
         ACCOUNTS: ${{ secrets.ACCOUNTS }}
