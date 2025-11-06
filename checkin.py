@@ -100,7 +100,7 @@ class CheckIn:
 
                     if slider and handle:
                         await self._take_screenshot(page, "aliyun_captcha_slider_start")
-                        
+
                         await page.mouse.move(
                             handle.get("x") + handle.get("width") / 2,
                             handle.get("y") + handle.get("height") / 2,
@@ -135,9 +135,7 @@ class CheckIn:
             await self._take_screenshot(page, "aliyun_captcha_error")
             return False
 
-    def _check_and_handle_response(
-        self, client: httpx.Client, response: httpx.Response, context: str = "response"
-    ) -> dict | None:
+    def _check_and_handle_response(self, response: httpx.Response, context: str = "response") -> dict | None:
         """检查响应类型，如果是 HTML 则保存为文件，否则返回 JSON 数据
 
         Args:
@@ -147,7 +145,6 @@ class CheckIn:
         Returns:
             JSON 数据字典，如果响应是 HTML 则返回 None
         """
-        content_type = response.headers.get("content-type", "").lower()
 
         # 创建 logs 目录
         logs_dir = "logs"
@@ -158,10 +155,12 @@ class CheckIn:
             return response.json()
         except json.JSONDecodeError as e:
             print(f"❌ {self.account_name}: Failed to parse JSON response: {e}")
-            
+
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             safe_account_name = "".join(c if c.isalnum() else "_" for c in self.account_name)
             safe_context = "".join(c if c.isalnum() else "_" for c in context)
+
+            content_type = response.headers.get("content-type", "").lower()
 
             # 检查是否是 HTML 响应
             if "text/html" in content_type or "text/plain" in content_type:
@@ -182,6 +181,9 @@ class CheckIn:
                     f.write(response.text)
 
                 print(f"⚠️ {self.account_name}: Invalid response saved to: {filepath}")
+            return None
+        except Exception as e:
+            print(f"❌ {self.account_name}: Error occurred while checking and handling response: {e}")
             return None
 
     async def get_waf_cookies_with_browser(self) -> dict | None:
@@ -470,7 +472,7 @@ class CheckIn:
             response = client.get(self.provider_config.get_status_url(), headers=headers, timeout=30)
 
             if response.status_code == 200:
-                data = self._check_and_handle_response(client, response, f"get_auth_client_id_{provider}")
+                data = self._check_and_handle_response(response, f"get_auth_client_id_{provider}")
                 if data is None:
 
                     # 尝试从浏览器 localStorage 获取状态
@@ -578,8 +580,9 @@ class CheckIn:
                                 return data;
                             }}catch(e){{
                                 return {{
-                                    success:false,
-                                    message: text
+                                    success: false,
+                                    text: text,
+                                    message: e.message
                                 }};
                             }}
                         }}"""
@@ -612,7 +615,7 @@ class CheckIn:
             response = client.get(self.provider_config.get_auth_state_url(), headers=headers, timeout=30)
 
             if response.status_code == 200:
-                json_data = self._check_and_handle_response(client, response, "get_auth_state")
+                json_data = self._check_and_handle_response(response, "get_auth_state")
                 if json_data is None:
                     # 尝试从浏览器 localStorage 获取状态
                     print(f"ℹ️ {self.account_name}: Getting auth state from browser")
@@ -761,7 +764,7 @@ class CheckIn:
             response = client.get(self.provider_config.get_user_info_url(), headers=headers, timeout=30)
 
             if response.status_code == 200:
-                json_data = self._check_and_handle_response(client, response, "get_user_info")
+                json_data = self._check_and_handle_response(response, "get_user_info")
                 if json_data is None:
                     # 尝试从浏览器获取用户信息
                     # print(f"ℹ️ {self.account_name}: Getting user info from browser")
@@ -821,7 +824,7 @@ class CheckIn:
         print(f"📨 {self.account_name}: Response status code {response.status_code}")
 
         if response.status_code == 200:
-            json_data = self._check_and_handle_response(client, response, "execute_check_in")
+            json_data = self._check_and_handle_response(response, "execute_check_in")
             if json_data is None:
                 # 如果不是 JSON 响应（可能是 HTML），检查是否包含成功标识
                 if "success" in response.text.lower():

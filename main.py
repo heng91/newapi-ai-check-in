@@ -7,10 +7,11 @@ import asyncio
 import hashlib
 import json
 import os
-import sys
-
+import sys    
+from datetime import datetime
 from dotenv import load_dotenv
 from utils.config import AppConfig, AccountConfig
+from utils.notify import notify
 from checkin import CheckIn
 
 load_dotenv(override=True)
@@ -164,14 +165,13 @@ async def main():
     Returns:
             退出码: 0 表示至少有一个账号成功, 1 表示全部失败
     """
-    from datetime import datetime
-    from utils.notify import notify
+
 
     print("🚀 newapi.ai multi-account auto check-in script started (using Camoufox)")
     print(f'🕒 Execution time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
 
     app_config = AppConfig.load_from_env()
-    print(f"⚙️ Loaded {len(app_config.providers)} provider configuration(s)")
+    print(f"⚙️ Loaded {len(app_config.providers)} provider(s)")
 
     # 加载账号配置
     accounts = load_accounts()
@@ -179,7 +179,7 @@ async def main():
         print("❌ Unable to load account configuration, program exits")
         return 1
 
-    print(f"⚙️ Found {len(accounts)} account configurations")
+    print(f"⚙️ Found {len(accounts)} account(s)")
 
     # 加载余额hash
     last_balance_hash = load_balance_hash()
