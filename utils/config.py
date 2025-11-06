@@ -23,7 +23,8 @@ class ProviderConfig:
     api_user_key: str = "new-api-user"
     github_client_id: str | None = None
     linuxdo_client_id: str | None = None
-    bypass_method: Literal["waf_cookies","aliyun_captcha"] | None = None
+    aliyun_captcha: bool = False
+    bypass_method: Literal["waf_cookies"] | None = None
 
     @classmethod
     def from_dict(cls, name: str, data: dict) -> "ProviderConfig":
@@ -42,16 +43,13 @@ class ProviderConfig:
             api_user_key=data.get("api_user_key", "new-api-user"),
             github_client_id=data.get("github_client_id"),
             linuxdo_client_id=data.get("linuxdo_client_id"),
+            aliyun_captcha=data.get("aliyun_captcha", False),
             bypass_method=data.get("bypass_method"),
         )
 
     def needs_waf_cookies(self) -> bool:
         """判断是否需要获取 WAF cookies"""
         return self.bypass_method == "waf_cookies"
-    
-    def needs_aliyun_captcha(self) -> bool:
-        """判断是否需要获取阿里云验证"""
-        return self.bypass_method == "aliyun_captcha"
 
     def needs_manual_check_in(self) -> bool:
         """判断是否需要手动调用签到接口"""
@@ -100,7 +98,8 @@ class AppConfig:
                 user_info_path="/api/user/self",
                 api_user_key="new-api-user",
                 github_client_id="Ov23liOwlnIiYoF3bUqw",
-                linuxdo_client_id="8w2uZtoWH9AUXrZr1qeCEEmvXLafea3c",
+                linuxdo_client_id="8w2uZtoWH9AUXrZr1qeCEEmvXLafea3c",                
+                aliyun_captcha=False,
                 bypass_method="waf_cookies",
             ),
             "agentrouter": ProviderConfig(
@@ -114,7 +113,8 @@ class AppConfig:
                 api_user_key="new-api-user",
                 github_client_id="Ov23lidtiR4LeVZvVRNL",
                 linuxdo_client_id="KZUecGfhhDZMVnv8UtEdhOhf9sNOhqVX",
-                bypass_method="aliyun_captcha",
+                aliyun_captcha=True,
+                bypass_method=None,
             ),
         }
 
