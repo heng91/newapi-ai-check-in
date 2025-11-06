@@ -8,7 +8,7 @@ import hashlib
 import os
 import tempfile
 from datetime import datetime
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse
 
 import httpx
 from camoufox.async_api import AsyncCamoufox
@@ -176,9 +176,11 @@ class CheckIn:
                     cookies = await browser.cookies()
 
                     waf_cookies = {}
+                    print(f"ℹ️ {self.account_name}: WAF cookies")
                     for cookie in cookies:
                         cookie_name = cookie.get("name")
                         cookie_value = cookie.get("value")
+                        print(f"  📚 Cookie: {cookie_name} (domain: {cookie_value})")
                         if cookie_name in ["acw_tc", "cdn_sec_tc", "acw_sc__v2"] and cookie_value is not None:
                             waf_cookies[cookie_name] = cookie_value
 
@@ -197,6 +199,189 @@ class CheckIn:
 
                 except Exception as e:
                     print(f"❌ {self.account_name}: Error occurred while getting WAF cookies: {e}")
+                    return None
+                finally:
+                    await page.close()
+
+    async def get_aliyun_captcha_cookies_with_browser(self) -> dict | None:
+        """使用 Camoufox 获取阿里云验证 cookies"""
+        print(f"ℹ️ {self.account_name}: Starting Camoufox browser to get Aliyun captcha cookies")
+
+        with tempfile.TemporaryDirectory(prefix=f"camoufox_{self.account_name}_aliyun_captcha_") as user_data_dir:
+            async with AsyncCamoufox(
+                persistent_context=True,
+                user_data_dir=user_data_dir,
+                headless=False,
+                humanize=True,
+                locale="en-US",
+            ) as browser:
+                page = await browser.new_page()
+
+                try:
+                    print(f"ℹ️ {self.account_name}: Access login page to get initial cookies")
+                    await page.goto(self.provider_config.get_login_url(), wait_until="networkidle")
+
+                    try:
+                        await page.wait_for_function('document.readyState === "complete"', timeout=5000)
+                    except Exception:
+                        await page.wait_for_timeout(3000)
+
+                    # 检查是否有 traceid (阿里云验证码页面)
+                    traceid = None
+                    try:
+                        traceid = await page.evaluate(
+                            """() => {
+                            const traceElement = document.getElementById('traceid');
+                            if (traceElement) {
+                                const text = traceElement.innerText || traceElement.textContent;
+                                const match = text.match(/TraceID:\\s*([a-f0-9]+)/i);
+                                return match ? match[1] : null;
+                            }
+                            return null;
+                        }"""
+                        )
+                    except Exception:
+                        traceid = None
+
+                    if traceid:
+                        print(f"⚠️ {self.account_name}: Aliyun captcha detected, " f"traceid: {traceid}")
+
+                        # 提取验证码相关数据
+                        captcha_data = await page.evaluate(
+                            """() => {
+                            const data = {};
+
+                            // 获取 traceid
+                            const traceElement = document.getElementById('traceid');
+                            if (traceElement) {
+                                const text = traceElement.innerText || traceElement.textContent;
+                                const match = text.match(/TraceID:\\s*([a-f0-9]+)/i);
+                                data.traceid = match ? match[1] : null;
+                            }
+
+                            // 获取 window.aliyun_captcha 相关字段
+                            for (const key in window) {
+                                if (key.startsWith('aliyun_captcha')) {
+                                    data[key] = window[key];
+                                }
+                            }
+
+                            // 获取 requestInfo
+                            if (window.requestInfo) {
+                                data.requestInfo = window.requestInfo;
+                            }
+
+                            // 获取当前 URL
+                            data.currentUrl = window.location.href;
+
+                            return data;
+                        }"""
+                        )
+
+                        print(
+                            f"📋 {self.account_name}: Captcha data extracted: " f"{json.dumps(captcha_data, indent=2)}"
+                        )
+
+                        # 通过 WaitForSecrets 发送验证码数据并等待用户手动验证
+                        from utils.wait_for_secrets import WaitForSecrets
+
+                        wait_for_secrets = WaitForSecrets()
+                        secret_obj = {
+                            "CAPTCHA_NEXT_URL": {
+                                "name": f"{self.account_name} - Aliyun Captcha Verification",
+                                "description": (
+                                    f"Aliyun captcha verification required.\n"
+                                    f"TraceID: {captcha_data.get('traceid', 'N/A')}\n"
+                                    f"Current URL: {captcha_data.get('currentUrl', 'N/A')}\n"
+                                    f"Please complete the captcha manually in the browser, "
+                                    f"then provide the next URL after verification."
+                                ),
+                            }
+                        }
+
+                        secrets = wait_for_secrets.get(
+                            secret_obj,
+                            timeout=300,
+                            notification={
+                                "title": "阿里云验证",
+                                "content": "请在浏览器中完成验证（[操作说明](https://github.com/aceHubert/newapi-ai-check-in/docs/aliyun_captcha/README.md）），并提供下一步的 URL。"
+                                "``` json"
+                                f"{json.dumps(captcha_data, indent=2)}"
+                                "```",
+                            },
+                        )
+                        if not secrets or "CAPTCHA_NEXT_URL" not in secrets:
+                            print(f"❌ {self.account_name}: No next URL provided " f"for captcha verification")
+                            return None
+
+                        next_url = secrets["CAPTCHA_NEXT_URL"]
+                        print(f"🔄 {self.account_name}: Navigating to next URL " f"after captcha: {next_url}")
+
+                        # 导航到新的 URL
+                        await page.goto(next_url, wait_until="networkidle")
+
+                        try:
+                            await page.wait_for_function('document.readyState === "complete"', timeout=5000)
+                        except Exception:
+                            await page.wait_for_timeout(3000)
+
+                        # 再次检查是否还有 traceid
+                        traceid_after = None
+                        try:
+                            traceid_after = await page.evaluate(
+                                """() => {
+                                const traceElement = document.getElementById('traceid');
+                                if (traceElement) {
+                                    const text = traceElement.innerText || traceElement.textContent;
+                                    const match = text.match(/TraceID:\\s*([a-f0-9]+)/i);
+                                    return match ? match[1] : null;
+                                }
+                                return null;
+                            }"""
+                            )
+                        except Exception:
+                            traceid_after = None
+
+                        if traceid_after:
+                            print(
+                                f"❌ {self.account_name}: Captcha verification failed, "
+                                f"traceid still present: {traceid_after}"
+                            )
+                            return None
+
+                        print(f"✅ {self.account_name}: Captcha verification successful, " f"traceid cleared")
+
+                    cookies = await browser.cookies()
+
+                    aliyun_captcha_cookies = {}
+                    print(f"ℹ️ {self.account_name}: Aliyun Captcha cookies")
+                    for cookie in cookies:
+                        cookie_name = cookie.get("name")
+                        cookie_value = cookie.get("value")
+                        print(f"  📚 Cookie: {cookie_name} (domain: {cookie_value})")
+                        # if cookie_name in ["acw_tc", "cdn_sec_tc", "acw_sc__v2"]
+                        # and cookie_value is not None:
+                        aliyun_captcha_cookies[cookie_name] = cookie_value
+
+                    print(
+                        f"ℹ️ {self.account_name}: "
+                        f"Got {len(aliyun_captcha_cookies)} "
+                        f"Aliyun Captcha cookies after step 1"
+                    )
+
+                    # 检查是否至少获取到一个 Aliyun Captcha cookie
+                    if not aliyun_captcha_cookies:
+                        print(f"❌ {self.account_name}: " f"No Aliyun Captcha cookies obtained")
+                        return None
+
+                    # 显示获取到的 cookies
+                    cookie_names = list(aliyun_captcha_cookies.keys())
+                    print(f"✅ {self.account_name}: " f"Successfully got Aliyun Captcha cookies: {cookie_names}")
+
+                    return aliyun_captcha_cookies
+
+                except Exception as e:
+                    print(f"❌ {self.account_name}: " f"Error occurred while getting Aliyun Captcha cookies: {e}")
                     return None
                 finally:
                     await page.close()
@@ -322,114 +507,10 @@ class CheckIn:
                 "error": f"Failed to get client id, {e}",
             }
 
-    async def get_auth_state_with_browser(self, status: dict, wait_for_url: str) -> dict:
-        """使用 Camoufox 获取认证 URL 和 cookies
-
-        Args:
-            status: 要存储到 localStorage 的状态数据
-            wait_for_url: 要等待的 URL 模式
-
-        Returns:
-            包含 success、url、cookies 或 error 的字典
-        """
-        print(f"ℹ️ {self.account_name}: Starting Camoufox browser to get auth URL")
-
-        with tempfile.TemporaryDirectory(prefix=f"camoufox_{self.account_name}_auth_") as user_data_dir:
-            async with AsyncCamoufox(
-                user_data_dir=user_data_dir,
-                persistent_context=True,
-                headless=False,
-                humanize=True,
-                locale="en-US",
-            ) as browser:
-                page = await browser.new_page()
-
-                try:
-                    # 1. Open the login page first
-                    print(f"ℹ️ {self.account_name}: Opening login page")
-                    await page.goto(self.provider_config.get_login_url(), wait_until="networkidle")
-
-                    # Wait for page to be fully loaded
-                    try:
-                        await page.wait_for_function('document.readyState === "complete"', timeout=5000)
-                    except Exception:
-                        await page.wait_for_timeout(3000)
-
-                    await self._take_screenshot(page, "login_page_opened")
-
-                    # 2. Store status in localStorage (after page is loaded)
-                    print(f"ℹ️ {self.account_name}: Storing status in localStorage")
-                    status_json = json.dumps(status, ensure_ascii=False)
-                    # Escape single quotes for JavaScript string literal
-                    status_json_escaped = status_json.replace("'", "\\'")
-                    await page.evaluate(f"() => localStorage.setItem('status', '{status_json_escaped}')")
-
-                    # 3. Reload the page to apply localStorage changes
-                    print(f"ℹ️ {self.account_name}: Reloading page after setting localStorage")
-                    await page.reload()
-
-                    # Wait for page to be fully loaded after reload
-                    try:
-                        await page.wait_for_function('document.readyState === "complete"', timeout=5000)
-                    except Exception:
-                        await page.wait_for_timeout(3000)
-
-                    await self._take_screenshot(page, "login_page_reloaded")
-
-                    # 4. Click the main button[0] and wait for new tab
-                    print(f"ℹ️ {self.account_name}: Clicking main button")
-                    buttons = await page.query_selector_all("main button")
-                    if buttons and len(buttons) > 0:
-                        # Wait for new tab to open when clicking the button
-                        async with browser.expect_page() as new_page_info:
-                            await buttons[0].click()
-                        new_page = await new_page_info.value
-                        print(f"ℹ️ {self.account_name}: New tab opened")
-
-                    else:
-                        print(f"⚠️ {self.account_name}: No buttons found on page")
-                        await self._take_screenshot(page, "no_buttons_found")
-                        return {"success": False, "error": "No buttons found on login page"}
-
-                    await self._take_screenshot(new_page, "auth_page_opened")
-
-                    # 5. Get the first URL of the new tab (don't wait for loading)
-                    print(f"ℹ️ {self.account_name}: New tab URL: {new_page.url}")
-
-                    # Check if URL matches the expected pattern
-                    current_url = None
-                    if wait_for_url in new_page.url:
-                        print(f"✅ {self.account_name}: New tab URL matches expected pattern")
-                        current_url = new_page.url
-                    else:
-                        print(f"⚠️ {self.account_name}: URL doesn't match pattern but continuing anyway")
-
-                    # 6. Get cookies from the browser
-                    cookies = await browser.cookies()
-                    print(f"ℹ️ {self.account_name}: Got {len(cookies)} cookies from browser")
-
-                    # 7. Return the new tab URL and cookies
-                    print(f"✅ {self.account_name}: Got auth URL from new tab: {current_url}")
-
-                    return {"success": True, "url": current_url, "cookies": cookies}
-
-                except Exception as e:
-                    print(f"❌ {self.account_name}: Error getting auth URL: {e}")
-                    await self._take_screenshot(page, "auth_url_error")
-                    return {"success": False, "error": f"Error getting auth URL: {e}"}
-                finally:
-                    await page.close()
-                    if "new_page" in locals():
-                        await new_page.close()
-
     async def get_auth_state(
         self,
         client: httpx.Client,
-        client_id: str,
         headers: dict,
-        provider: str,
-        wait_for_url: str,
-        return_to_key: str = "return_to",
     ) -> dict:
         """获取认证状态"""
         try:
@@ -438,48 +519,6 @@ class CheckIn:
             if response.status_code == 200:
                 json_data = self.check_and_handle_response(client, response, "get_auth_state")
                 if json_data is None:
-                    # 尝试从浏览器 localStorage 获取状态
-                    print(f"ℹ️ {self.account_name}: Getting auth state from browser")
-                    try:
-                        auth_result = await self.get_auth_state_with_browser(
-                            {f"{provider}_client_id": client_id, f"{provider}_oauth": True},
-                            wait_for_url,
-                        )
-
-                        if not auth_result.get("success"):
-                            error_msg = auth_result.get("error", "Unknown error")
-                            print(f"❌ {self.account_name}: {error_msg}")
-                            return False, {"error": "Failed to get auth URL with browser"}
-
-                        # 提取 return_to 参数
-                        auth_url = auth_result.get("url")
-                        print(f"ℹ️ {self.account_name}: Extracted auth url: {auth_url}")
-                        parsed_url = urlparse(auth_url)
-                        query_params = parse_qs(parsed_url.query)
-                        return_to = query_params.get(return_to_key, [None])[0]
-
-                        if return_to:
-                            print(f"ℹ️ {self.account_name}: Extracted return_to: {return_to}")
-
-                            # 从 return_to URL 中提取 state 参数
-                            return_to_parsed = urlparse(return_to)
-                            return_to_params = parse_qs(return_to_parsed.query)
-                            auth_state = return_to_params.get("state", [None])[0]
-
-                            if auth_state:
-                                print(f"ℹ️ {self.account_name}: Extracted state from return_to: {auth_state}")
-                                return {
-                                    "success": True,
-                                    "state": auth_state,
-                                    "cookies": auth_result.get("cookies", []),
-                                }
-                            else:
-                                print(f"⚠️ {self.account_name}: No state parameter found in return_to URL")
-                        else:
-                            print(f"⚠️ {self.account_name}: No return_to parameter found in URL")
-                    except Exception as browser_err:
-                        print(f"⚠️ {self.account_name}: Failed to get auth state from browser: " f"{browser_err}")
-
                     return {
                         "success": False,
                         "error": "Failed to get auth state: Invalid response type (saved to logs)",
@@ -696,10 +735,7 @@ class CheckIn:
             # # 获取 OAuth 认证状态
             auth_state_result = await self.get_auth_state(
                 client=client,
-                client_id=client_id_result["client_id"],
                 headers=headers,
-                provider="github",
-                wait_for_url="https://github.com/login",
             )
             if auth_state_result and auth_state_result.get("success"):
                 print(f"ℹ️ {self.account_name}: Got auth state for GitHub: {auth_state_result['state']}")
@@ -801,10 +837,7 @@ class CheckIn:
             # 获取 OAuth 认证状态
             auth_state_result = await self.get_auth_state(
                 client=client,
-                client_id=client_id_result["client_id"],
                 headers=headers,
-                provider="linuxdo",
-                wait_for_url="https://linux.do/login",
             )
             if auth_state_result and auth_state_result.get("success"):
                 print(f"ℹ️ {self.account_name}: Got auth state for Linux.do: {auth_state_result['state']}")

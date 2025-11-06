@@ -23,7 +23,7 @@ class ProviderConfig:
     api_user_key: str = "new-api-user"
     github_client_id: str | None = None
     linuxdo_client_id: str | None = None
-    bypass_method: Literal["waf_cookies"] | None = None
+    bypass_method: Literal["waf_cookies","aliyun_captcha"] | None = None
 
     @classmethod
     def from_dict(cls, name: str, data: dict) -> "ProviderConfig":
@@ -48,25 +48,33 @@ class ProviderConfig:
     def needs_waf_cookies(self) -> bool:
         """判断是否需要获取 WAF cookies"""
         return self.bypass_method == "waf_cookies"
+    
+    def needs_aliyun_captcha(self) -> bool:
+        """判断是否需要获取阿里云验证"""
+        return self.bypass_method == "aliyun_captcha"
 
     def needs_manual_check_in(self) -> bool:
         """判断是否需要手动调用签到接口"""
-        return self.bypass_method == "waf_cookies"
+        return self.sign_in_path is not None
 
     def get_login_url(self) -> str:
         """获取登录 URL"""
         return f"{self.origin}{self.login_path}"
+
     def get_status_url(self) -> str:
         """获取状态 URL"""
         return f"{self.origin}{self.status_path}"
+
     def get_auth_state_url(self) -> str:
         """获取认证状态 URL"""
         return f"{self.origin}{self.auth_state_path}"
+
     def get_sign_in_url(self) -> str | None:
         """获取签到 URL"""
         if self.sign_in_path:
             return f"{self.origin}{self.sign_in_path}"
         return None
+
     def get_user_info_url(self) -> str:
         """获取用户信息 URL"""
         return f"{self.origin}{self.user_info_path}"
@@ -130,9 +138,7 @@ class AppConfig:
 
                 print(f"ℹ️ Loaded {len(providers_data)} custom provider(s) from PROVIDERS environment variable")
             except json.JSONDecodeError as e:
-                print(
-                    f"⚠️ Failed to parse PROVIDERS environment variable: {e}, using default configuration only"
-                )
+                print(f"⚠️ Failed to parse PROVIDERS environment variable: {e}, using default configuration only")
             except Exception as e:
                 print(f"⚠️ Error loading PROVIDERS: {e}, using default configuration only")
 
@@ -171,7 +177,7 @@ class AccountConfig:
             cookies=cookies,
             api_user=data.get("api_user", ""),
             linux_do=linux_do,
-            github=github
+            github=github,
         )
 
     def get_display_name(self, index: int = 0) -> str:

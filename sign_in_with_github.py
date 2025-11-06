@@ -202,7 +202,14 @@ class GitHubSignIn:
                                                 "description": "OTP from authenticator app",
                                             }
                                         }
-                                        secrets = wait_for_secrets.get(secret_obj, timeout=5)
+                                        secrets = wait_for_secrets.get(
+                                            secret_obj,
+                                            timeout=5,
+                                            notification={
+                                                "title": "GitHub 2FA OTP",
+                                                "message": "请在您的账号关联的邮箱查看验证码，并通过以下链接输入",
+                                            },
+                                        )
                                         if secrets and "OTP" in secrets:
                                             otp_code = secrets["OTP"]
                                             print(f"✅ {self.account_name}: Retrieved OTP via wait-for-secrets")
@@ -275,7 +282,7 @@ class GitHubSignIn:
                                 await page.wait_for_function('document.readyState === "complete"', timeout=5000)
                             except Exception:
                                 await page.wait_for_timeout(3000)
-                                
+
                             user_data = await page.evaluate("() => localStorage.getItem('user')")
                             if user_data:
                                 user_obj = json.loads(user_data)
