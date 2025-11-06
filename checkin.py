@@ -180,7 +180,7 @@ class CheckIn:
                     for cookie in cookies:
                         cookie_name = cookie.get("name")
                         cookie_value = cookie.get("value")
-                        print(f"  📚 Cookie: {cookie_name} (domain: {cookie_value})")
+                        print(f"  📚 Cookie: {cookie_name} (value: {cookie_value})")
                         if cookie_name in ["acw_tc", "cdn_sec_tc", "acw_sc__v2"] and cookie_value is not None:
                             waf_cookies[cookie_name] = cookie_value
 
@@ -358,7 +358,7 @@ class CheckIn:
                     for cookie in cookies:
                         cookie_name = cookie.get("name")
                         cookie_value = cookie.get("value")
-                        print(f"  📚 Cookie: {cookie_name} (domain: {cookie_value})")
+                        print(f"  📚 Cookie: {cookie_name} (value: {cookie_value})")
                         # if cookie_name in ["acw_tc", "cdn_sec_tc", "acw_sc__v2"]
                         # and cookie_value is not None:
                         aliyun_captcha_cookies[cookie_name] = cookie_value
@@ -893,7 +893,7 @@ class CheckIn:
                 print(f"❌ {self.account_name}: Unable to get WAF cookies")
                 # 即使 WAF cookies 失败，也继续尝试其他认证方式
                 print(f"✅ {self.account_name}: WAF cookies obtained")
-        elif self.provider_config.needs_aliyun_captcha_cookies():
+        elif self.provider_config.needs_aliyun_captcha():
             waf_cookies = await self.get_aliyun_captcha_cookies_with_browser()
             if not waf_cookies:
                 print(f"❌ {self.account_name}: Unable to get Aliyun captcha cookies")

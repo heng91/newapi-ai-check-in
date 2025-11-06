@@ -240,7 +240,7 @@ async def main():
                 else:
                     failed_methods.append(auth_method)
                     error_msg = user_info.get("error", "Unknown error") if user_info else "Unknown error"
-                    account_result += f"    🔺 Error: {str(error_msg)[:50]}...\n"
+                    account_result += f"    🔺 {str(error_msg)[:100]}...\n"
 
             if account_success:
                 current_balances[account_key] = this_account_balances
@@ -268,7 +268,7 @@ async def main():
         except Exception as e:
             print(f"❌ {account_name} processing exception: {e}")
             need_notify = True  # 异常也需要通知
-            notification_content.append(f"❌ {account_name} exception: {str(e)[:50]}...")
+            notification_content.append(f"❌ {account_name} Exception: {str(e)[:100]}...")
 
     # 检查余额变化
     current_balance_hash = generate_balance_hash(current_balances) if current_balances else None
