@@ -277,11 +277,10 @@ class GitHubSignIn:
                         # 从 localStorage 获取 user 对象并提取 id
                         api_user = None
                         try:
-                            # 等待登录完成后 localStorage 可能需要时间更新
                             try:
-                                await page.wait_for_function('document.readyState === "complete"', timeout=5000)
+                                await page.wait_for_function('localStorage.getItem("user") !== null', timeout=5000)
                             except Exception:
-                                await page.wait_for_timeout(3000)
+                                await page.wait_for_timeout(5000)
 
                             user_data = await page.evaluate("() => localStorage.getItem('user')")
                             if user_data:
