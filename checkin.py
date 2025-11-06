@@ -211,95 +211,103 @@ class CheckIn:
 
                     if traceid:
                         print(f"⚠️ {self.account_name}: Aliyun captcha detected, " f"traceid: {traceid}")
-
                         try:
-                            await page.wait_for_function('!!window.requestInfo', timeout=5000)
-                        except Exception:
-                            await page.wait_for_timeout(3000)
+                            await page.wait_for_selector("#nocaptcha", timeout=60000)
 
-                        # 提取验证码相关数据
-                        captcha_data = await page.evaluate(
-                            """() => {
-                            const data = {};
+                            slider_element = await page.query_selector("#nocaptcha .nc_scale")
+                            if slider_element:
+                                slider = await slider_element.bounding_box()
+                                print(f"📸 {self.account_name}: Slider bounding box: {slider}")
 
-                            // 获取 traceid
-                            const traceElement = document.getElementById('traceid');
-                            if (traceElement) {
-                                const text = traceElement.innerText || traceElement.textContent;
-                                const match = text.match(/TraceID:\\s*([a-f0-9]+)/i);
-                                data.traceid = match ? match[1] : null;
-                            }
+                            slider_handle = await page.query_selector("#nocaptcha .btn_slide")
+                            if slider_handle:
+                                handle = await slider_handle.bounding_box()
+                                print(f"📸 {self.account_name}: Slider handle bounding box: {handle}")
 
-                            // 获取 window.aliyun_captcha 相关字段
-                            for (const key in window) {
-                                if (key.startsWith('aliyun_captcha')) {
-                                    data[key] = window[key];
-                                }
-                            }
-
-                            // 获取 requestInfo
-                            if (window.requestInfo) {
-                                data.requestInfo = window.requestInfo;
-                            }
-
-                            // 获取当前 URL
-                            data.currentUrl = window.location.href;
-
-                            // 获取页面中所有 <script> 标签的内容 (仅内联脚本，排除外部引用)
-                            const scriptElements = document.querySelectorAll('script');
-                            data.scripts = Array.from(scriptElements)
-                                .filter(script => !script.src)
-                                .map((script, index) => {
-                                    return {
-                                        index: index,
-                                        content: script.textContent
-                                    };
-                                });
-
-                            return data;
-                        }"""
-                        )
-
-                        print(
-                            f"📋 {self.account_name}: Captcha data extracted: " f"\n{json.dumps(captcha_data, indent=2)}"
-                        )
-
-                        # 通过 WaitForSecrets 发送验证码数据并等待用户手动验证
-                        from utils.wait_for_secrets import WaitForSecrets
-
-                        wait_for_secrets = WaitForSecrets()
-                        secret_obj = {
-                            "CAPTCHA_NEXT_URL": {
-                                "name": f"{self.account_name} - Aliyun Captcha Verification",
-                                "description": (
-                                    f"Aliyun captcha verification required.\n"
-                                    f"TraceID: {captcha_data.get('traceid', 'N/A')}\n"
-                                    f"Current URL: {captcha_data.get('currentUrl', 'N/A')}\n"
-                                    f"Please complete the captcha manually in the browser, "
-                                    f"then provide the next URL after verification."
-                                ),
-                            }
-                        }
-
-                        secrets = wait_for_secrets.get(
-                            secret_obj,
-                            timeout=300,
-                            notification={
-                                "title": "阿里云验证",
-                                "content": "请在浏览器中完成验证，并提供下一步的 URL。\n"
-                                f"{json.dumps(captcha_data, indent=2)}\n"
-                                "📋 操作说明：https://github.com/aceHubert/newapi-ai-check-in/docs/aliyun_captcha/README.md",
-                            },
-                        )
-                        if not secrets or "CAPTCHA_NEXT_URL" not in secrets:
-                            print(f"❌ {self.account_name}: No next URL provided " f"for captcha verification")
+                            if slider and handle:
+                                await page.mouse.move(handle.get("x") + handle.get("width") / 2, handle.get("y") + handle.get("height") / 2)
+                                await page.mouse.down()
+                                await page.mouse.move(handle.get("x") + slider.get("width"), handle.get("y") + handle.get("height") / 2, steps=2)
+                                await page.mouse.up()
+                            else:
+                                print(f"❌ {self.account_name}: Slider or handle not found")
+                                return None
+                        except Exception as e:
+                            print(f"❌ {self.account_name}: Error occurred while moving slider, {e}")
                             return None
+                        
+                        # # 提取验证码相关数据
+                        # captcha_data = await page.evaluate(
+                        #     """() => {
+                        #     const data = {};
 
-                        next_url = secrets["CAPTCHA_NEXT_URL"]
-                        print(f"🔄 {self.account_name}: Navigating to next URL " f"after captcha: {next_url}")
+                        #     // 获取 traceid
+                        #     const traceElement = document.getElementById('traceid');
+                        #     if (traceElement) {
+                        #         const text = traceElement.innerText || traceElement.textContent;
+                        #         const match = text.match(/TraceID:\\s*([a-f0-9]+)/i);
+                        #         data.traceid = match ? match[1] : null;
+                        #     }
 
-                        # 导航到新的 URL
-                        await page.goto(next_url, wait_until="networkidle")
+                        #     // 获取 window.aliyun_captcha 相关字段
+                        #     for (const key in window) {
+                        #         if (key.startsWith('aliyun_captcha')) {
+                        #             data[key] = window[key];
+                        #         }
+                        #     }
+
+                        #     // 获取 requestInfo
+                        #     if (window.requestInfo) {
+                        #         data.requestInfo = window.requestInfo;
+                        #     }
+
+                        #     // 获取当前 URL
+                        #     data.currentUrl = window.location.href;
+
+                        #     return data;
+                        # }"""
+                        # )
+
+                        # print(
+                        #     f"📋 {self.account_name}: Captcha data extracted: " f"\n{json.dumps(captcha_data, indent=2)}"
+                        # )
+
+                        # # 通过 WaitForSecrets 发送验证码数据并等待用户手动验证
+                        # from utils.wait_for_secrets import WaitForSecrets
+
+                        # wait_for_secrets = WaitForSecrets()
+                        # secret_obj = {
+                        #     "CAPTCHA_NEXT_URL": {
+                        #         "name": f"{self.account_name} - Aliyun Captcha Verification",
+                        #         "description": (
+                        #             f"Aliyun captcha verification required.\n"
+                        #             f"TraceID: {captcha_data.get('traceid', 'N/A')}\n"
+                        #             f"Current URL: {captcha_data.get('currentUrl', 'N/A')}\n"
+                        #             f"Please complete the captcha manually in the browser, "
+                        #             f"then provide the next URL after verification."
+                        #         ),
+                        #     }
+                        # }
+
+                        # secrets = wait_for_secrets.get(
+                        #     secret_obj,
+                        #     timeout=300,
+                        #     notification={
+                        #         "title": "阿里云验证",
+                        #         "content": "请在浏览器中完成验证，并提供下一步的 URL。\n"
+                        #         f"{json.dumps(captcha_data, indent=2)}\n"
+                        #         "📋 操作说明：https://github.com/aceHubert/newapi-ai-check-in/docs/aliyun_captcha/README.md",
+                        #     },
+                        # )
+                        # if not secrets or "CAPTCHA_NEXT_URL" not in secrets:
+                        #     print(f"❌ {self.account_name}: No next URL provided " f"for captcha verification")
+                        #     return None
+
+                        # next_url = secrets["CAPTCHA_NEXT_URL"]
+                        # print(f"🔄 {self.account_name}: Navigating to next URL " f"after captcha: {next_url}")
+
+                        # # 导航到新的 URL
+                        # await page.goto(next_url, wait_until="networkidle")
 
                         try:
                             await page.wait_for_function('document.readyState === "complete"', timeout=5000)
@@ -362,7 +370,7 @@ class CheckIn:
                     return aliyun_captcha_cookies
 
                 except Exception as e:
-                    print(f"❌ {self.account_name}: " f"Error occurred while getting Aliyun Captcha cookies: {e}")
+                    print(f"❌ {self.account_name}: " f"Error occurred while getting Aliyun Captcha cookies, {e}")
                     return None
                 finally:
                     await page.close()
@@ -878,6 +886,9 @@ class CheckIn:
             waf_cookies = await self.get_aliyun_captcha_cookies_with_browser()
             if not waf_cookies:
                 print(f"❌ {self.account_name}: Unable to get Aliyun captcha cookies")
+                return [
+                    [self.provider_config.name, False, {"error": "Unable to get Aliyun captcha cookies"}],
+                ]
         else:
             print(f"ℹ️ {self.account_name}: Bypass WAF not required, using user cookies directly")
 
