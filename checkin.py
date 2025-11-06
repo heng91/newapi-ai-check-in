@@ -16,20 +16,22 @@ from utils.config import AccountConfig, ProviderConfig
 from utils.browser_utils import parse_cookies, get_random_user_agent
 
 
+
+
 class CheckIn:
     """newapi.ai 签到管理类"""
 
     account_config: AccountConfig
     account_name: str
     provider_config: ProviderConfig
-    cache_dir: str
+    storage_state_dir: str
 
     def __init__(
         self,
         account_config: AccountConfig,
         provider_config: ProviderConfig,
         account_index: int,
-        cache_dir: str = "caches",
+        storage_state_dir: str = "stroage-states",
     ):
         """初始化签到管理器
 
@@ -39,8 +41,8 @@ class CheckIn:
         self.account_name = account_config.name or f"Account {account_index + 1}"
         self.account_info = account_config
         self.provider_config = provider_config
-        self.cache_dir = cache_dir
-        os.makedirs(self.cache_dir, exist_ok=True)
+        self.storage_state_dir = storage_state_dir
+        os.makedirs(self.storage_state_dir, exist_ok=True)
 
     async def _take_screenshot(self, page, reason: str) -> None:
         """截取当前页面的屏幕截图
@@ -65,6 +67,52 @@ class CheckIn:
             print(f"📸 {self.account_name}: Screenshot saved to {filepath}")
         except Exception as e:
             print(f"⚠️ {self.account_name}: Failed to take screenshot: {e}")
+
+    def check_and_handle_response(self,response: httpx.Response, context: str = "response") -> dict | None:
+        """检查响应类型，如果是 HTML 则保存为文件，否则返回 JSON 数据
+
+        Args:
+            response: httpx Response 对象
+            context: 上下文描述，用于生成文件名
+
+        Returns:
+            JSON 数据字典，如果响应是 HTML 则返回 None
+        """
+        content_type = response.headers.get("content-type", "").lower()
+        
+        # 创建 logs 目录
+        logs_dir = "logs"
+        os.makedirs(logs_dir, exist_ok=True)
+
+        # 检查是否是 HTML 响应
+        if "text/html" in content_type or "text/plain" in content_type:
+            # 保存 HTML 内容到文件
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"response_{context}_{timestamp}.html"
+            filepath = os.path.join(logs_dir, filename)
+
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write(response.text)
+
+            print(f"⚠️ {self.account_name}: Received HTML response instead of JSON, saved to: {filepath}")
+            return None
+
+        # 如果是 JSON，正常解析
+        try:
+            return response.json()
+        except json.JSONDecodeError as e:
+            print(f"❌ {self.account_name}: Failed to parse JSON response: {e}")
+            # 即使不是 HTML，如果 JSON 解析失败，也保存原始内容
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"response_{context}_invalid_{timestamp}.txt"
+            filepath = os.path.join(logs_dir, filename)
+
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write(response.text)
+
+            print(f"⚠️ {self.account_name}: Invalid response saved to: {filepath}")
+            return None
+
 
     async def get_waf_cookies_with_browser(self) -> dict | None:
         """使用 Camoufox 获取 WAF cookies（隐私模式）"""
@@ -178,14 +226,11 @@ class CheckIn:
             response = client.get(self.provider_config.get_status_url(), headers=headers, timeout=30)
 
             if response.status_code == 200:
-                try:
-                    data = response.json()
-                except json.JSONDecodeError as json_err:
-                    print(f"❌ {self.account_name}: Failed to parse JSON response")
-                    print(f"    📄 Response content (first 500 chars): {response.text[:500]}")
-                    print(f"ℹ️ {self.account_name}: Attempting to get status from browser localStorage")
+                data = self.check_and_handle_response(response, f"get_auth_client_id_{provider}")
+                if data is None:
 
                     # 尝试从浏览器 localStorage 获取状态
+                    print(f"ℹ️ {self.account_name}: Getting status from browser")
                     try:
                         status_data = await self.get_status_with_browser()
                         if status_data:
@@ -208,7 +253,7 @@ class CheckIn:
 
                     return {
                         "success": False,
-                        "error": f"Failed to get client id: Invalid JSON response - {json_err}",
+                        "error": "Failed to get client id: Invalid response type (saved to logs)",
                     }
 
                 if data.get("success"):
@@ -316,6 +361,7 @@ class CheckIn:
                     print(f"ℹ️ {self.account_name}: New tab URL: {new_page.url}")
 
                     # Check if URL matches the expected pattern
+                    current_url = None
                     if wait_for_url in new_page.url:
                         print(f"✅ {self.account_name}: New tab URL matches expected pattern")
                         current_url = new_page.url
@@ -354,54 +400,57 @@ class CheckIn:
             response = client.get(self.provider_config.get_auth_state_url(), headers=headers, timeout=30)
 
             if response.status_code == 200:
-                try:
-                    data = response.json()
-                except json.JSONDecodeError as json_err:
-                    print(f"❌ {self.account_name}: Invalid JSON response - {json_err}")
-                    print(f"    📄 Response content (first 500 chars): {response.text[:500]}")
-
+                json_data = self.check_and_handle_response(response, "get_auth_state")
+                if json_data is None:
+                    # 尝试从浏览器 localStorage 获取状态
                     print(f"ℹ️ {self.account_name}: Getting auth state from browser")
-                    auth_result = await self.get_auth_state_with_browser(
-                        {f"{provider}_client_id": client_id, f"{provider}_oauth": True},
-                        wait_for_url,
-                    )
+                    try:
+                        auth_result = await self.get_auth_state_with_browser(
+                            {f"{provider}_client_id": client_id, f"{provider}_oauth": True},
+                            wait_for_url,
+                        )
 
-                    if not auth_result.get("success"):
-                        error_msg = auth_result.get("error", "Unknown error")
-                        print(f"❌ {self.account_name}: {error_msg}")
-                        return False, {"error": "Failed to get auth URL with browser"}
+                        if not auth_result.get("success"):
+                            error_msg = auth_result.get("error", "Unknown error")
+                            print(f"❌ {self.account_name}: {error_msg}")
+                            return False, {"error": "Failed to get auth URL with browser"}
 
-                    # 提取 return_to 参数
-                    auth_url = auth_result.get("url")
-                    print(f"ℹ️ {self.account_name}: Extracted auth url: {auth_url}")
-                    parsed_url = urlparse(auth_url)
-                    query_params = parse_qs(parsed_url.query)
-                    return_to = query_params.get(return_to_key, [None])[0]
+                        # 提取 return_to 参数
+                        auth_url = auth_result.get("url")
+                        print(f"ℹ️ {self.account_name}: Extracted auth url: {auth_url}")
+                        parsed_url = urlparse(auth_url)
+                        query_params = parse_qs(parsed_url.query)
+                        return_to = query_params.get(return_to_key, [None])[0]
 
-                    if return_to:
-                        print(f"ℹ️ {self.account_name}: Extracted return_to: {return_to}")
+                        if return_to:
+                            print(f"ℹ️ {self.account_name}: Extracted return_to: {return_to}")
 
-                        # 从 return_to URL 中提取 state 参数
-                        return_to_parsed = urlparse(return_to)
-                        return_to_params = parse_qs(return_to_parsed.query)
-                        auth_state = return_to_params.get("state", [None])[0]
+                            # 从 return_to URL 中提取 state 参数
+                            return_to_parsed = urlparse(return_to)
+                            return_to_params = parse_qs(return_to_parsed.query)
+                            auth_state = return_to_params.get("state", [None])[0]
 
-                        if auth_state:
-                            print(f"ℹ️ {self.account_name}: Extracted state from return_to: {auth_state}")
-                            return {
-                                "success": True,
-                                "state": auth_state,
-                                "cookies": auth_result.get("cookies", []),
-                            }
+                            if auth_state:
+                                print(f"ℹ️ {self.account_name}: Extracted state from return_to: {auth_state}")
+                                return {
+                                    "success": True,
+                                    "state": auth_state,
+                                    "cookies": auth_result.get("cookies", []),
+                                }
+                            else:
+                                print(f"⚠️ {self.account_name}: No state parameter found in return_to URL")
                         else:
-                            print(f"⚠️ {self.account_name}: No state parameter found in return_to URL")
-                            return False, {"error": "No state parameter found in return_to URL"}
-                    else:
-                        print(f"⚠️ {self.account_name}: No return_to parameter found in URL")
-                        return False, {"error": "No return_to parameter found in URL"}
+                            print(f"⚠️ {self.account_name}: No return_to parameter found in URL")
+                    except Exception as browser_err:
+                        print(f"⚠️ {self.account_name}: Failed to get auth state from browser: " f"{browser_err}")
 
-                if data.get("success"):
-                    auth_data = data.get("data")
+                    return {
+                        "success": False,
+                        "error": "Failed to get auth state: Invalid response type (saved to logs)",
+                    }
+
+                if json_data.get("success"):
+                    auth_data = json_data.get("data")
 
                     # 将 httpx Cookies 对象转换为 Camoufox 格式
                     cookies = []
@@ -436,7 +485,7 @@ class CheckIn:
                         "cookies": cookies,  # 直接返回 Camoufox 格式的 cookies
                     }
                 else:
-                    error_msg = data.get("message", "Unknown error")
+                    error_msg = json_data.get("message", "Unknown error")
                     return {
                         "success": False,
                         "error": f"Failed to get auth state: {error_msg}",
@@ -457,18 +506,15 @@ class CheckIn:
             response = client.get(self.provider_config.get_user_info_url(), headers=headers, timeout=30)
 
             if response.status_code == 200:
-                try:
-                    data = response.json()
-                except json.JSONDecodeError as json_err:
-                    print(f"❌ {self.account_name}: Failed to parse JSON response")
-                    print(f"    📄 Response content (first 500 chars): {response.text[:500]}")
+                json_data = self.check_and_handle_response(response, "get_user_info")
+                if json_data is None:
                     return {
                         "success": False,
-                        "error": f"Failed to get user info: Invalid JSON response - {json_err}",
+                        "error": "Failed to get user info: Invalid response type (saved to logs)",
                     }
 
-                if data.get("success"):
-                    user_data = data.get("data", {})
+                if json_data.get("success"):
+                    user_data = json_data.get("data", {})
                     quota = round(user_data.get("quota", 0) / 500000, 2)
                     used_quota = round(user_data.get("used_quota", 0) / 500000, 2)
                     return {
@@ -478,7 +524,7 @@ class CheckIn:
                         "display": f"Current balance: ${quota}, Used: ${used_quota}",
                     }
                 else:
-                    error_msg = data.get("message", "Unknown error")
+                    error_msg = json_data.get("message", "Unknown error")
                     return {
                         "success": False,
                         "error": f"Failed to get user info: {error_msg}",
@@ -505,23 +551,23 @@ class CheckIn:
         print(f"📨 {self.account_name}: Response status code {response.status_code}")
 
         if response.status_code == 200:
-            try:
-                result = response.json()
-                if result.get("ret") == 1 or result.get("code") == 0 or result.get("success"):
-                    print(f"✅ {self.account_name}: Check-in successful!")
-                    return True
-                else:
-                    error_msg = result.get("msg", result.get("message", "Unknown error"))
-                    print(f"❌ {self.account_name}: Check-in failed - {error_msg}")
-                    return False
-            except json.JSONDecodeError:
-                # 如果不是 JSON 响应，检查是否包含成功标识
+            json_data = self.check_and_handle_response(response, "execute_check_in")
+            if json_data is None:
+                # 如果不是 JSON 响应（可能是 HTML），检查是否包含成功标识
                 if "success" in response.text.lower():
                     print(f"✅ {self.account_name}: Check-in successful!")
                     return True
                 else:
                     print(f"❌ {self.account_name}: Check-in failed - Invalid response format")
                     return False
+
+            if json_data.get("ret") == 1 or json_data.get("code") == 0 or json_data.get("success"):
+                print(f"✅ {self.account_name}: Check-in successful!")
+                return True
+            else:
+                error_msg = json_data.get("msg", json_data.get("message", "Unknown error"))
+                print(f"❌ {self.account_name}: Check-in failed - {error_msg}")
+                return False
         else:
             print(f"❌ {self.account_name}: Check-in failed - HTTP {response.status_code}")
             return False
@@ -628,7 +674,7 @@ class CheckIn:
 
             # 生成缓存文件路径
             username_hash = hashlib.sha256(username.encode("utf-8")).hexdigest()[:8]
-            cache_file_path = f"{self.cache_dir}/github_{username_hash}_storage_state.json"
+            cache_file_path = f"{self.storage_state_dir}/github_{username_hash}_storage_state.json"
 
             from sign_in_with_github import GitHubSignIn
 
@@ -733,7 +779,7 @@ class CheckIn:
 
             # 生成缓存文件路径
             username_hash = hashlib.sha256(username.encode("utf-8")).hexdigest()[:8]
-            cache_file_path = f"{self.cache_dir}/linuxdo_{username_hash}_storage_state.json"
+            cache_file_path = f"{self.storage_state_dir}/linuxdo_{username_hash}_storage_state.json"
 
             from sign_in_with_linuxdo import LinuxDoSignIn
 
