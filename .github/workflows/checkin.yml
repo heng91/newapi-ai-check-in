@@ -110,8 +110,8 @@ jobs:
       with:
         name: artifacts-${{ github.run_number }}
         path: |
+          logs/
           screenshots/
-          log/
         if-no-files-found: ignore
         retention-days: 7
 

@@ -15,9 +15,6 @@ from camoufox.async_api import AsyncCamoufox
 from utils.config import AccountConfig, ProviderConfig
 from utils.browser_utils import parse_cookies, get_random_user_agent
 
-
-
-
 class CheckIn:
     """newapi.ai 签到管理类"""
 
@@ -83,12 +80,15 @@ class CheckIn:
         # 创建 logs 目录
         logs_dir = "logs"
         os.makedirs(logs_dir, exist_ok=True)
+        
+        safe_account_name = "".join(c if c.isalnum() else "_" for c in self.account_name)
+        safe_context = "".join(c if c.isalnum() else "_" for c in context)
 
         # 检查是否是 HTML 响应
         if "text/html" in content_type or "text/plain" in content_type:
             # 保存 HTML 内容到文件
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"response_{context}_{timestamp}.html"
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")            
+            filename = f"{safe_account_name}_{timestamp}_{safe_context}.html"
             filepath = os.path.join(logs_dir, filename)
 
             with open(filepath, "w", encoding="utf-8") as f:
@@ -104,7 +104,7 @@ class CheckIn:
             print(f"❌ {self.account_name}: Failed to parse JSON response: {e}")
             # 即使不是 HTML，如果 JSON 解析失败，也保存原始内容
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"response_{context}_invalid_{timestamp}.txt"
+            filename = f"{safe_account_name}_{timestamp}_{safe_context}_invalid.txt"
             filepath = os.path.join(logs_dir, filename)
 
             with open(filepath, "w", encoding="utf-8") as f:
