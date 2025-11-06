@@ -78,7 +78,7 @@ class LinuxDoSignIn:
         Returns:
             (成功标志, 用户信息字典)
         """
-        print(f"ℹ️ {self.account_name}: Executing check-in with Linux.do (Camoufox bypass)")
+        print(f"ℹ️ {self.account_name}: Executing check-in with Linux.do")
         print(f"ℹ️ {self.account_name}: Using client_id: {client_id}, auth_state: {auth_state}")
 
         try:
@@ -184,7 +184,7 @@ class LinuxDoSignIn:
                                 # Camoufox 应该能够自动绕过 Cloudflare 验证
                                 # 但我们仍然检查是否遇到验证页面
                                 print(
-                                    f"ℹ️ {self.account_name}: Waiting for login completion (Cloudflare bypass active)..."
+                                    f"ℹ️ {self.account_name}: Waiting for login completion..."
                                 )
 
                                 try:
@@ -240,8 +240,12 @@ class LinuxDoSignIn:
                                 # 从 localStorage 获取 user 对象并提取 id
                                 api_user = None
                                 try:
-                                    # 等待5秒, 登录完成后 localStorage 可能需要时间更新
-                                    await page.wait_for_timeout(5000)
+                                    # 等待登录完成后 localStorage 可能需要时间更新
+                                    try:
+                                        await page.wait_for_function('document.readyState === "complete"', timeout=5000)
+                                    except Exception:
+                                        await page.wait_for_timeout(3000)
+                                        
                                     user_data = await page.evaluate("() => localStorage.getItem('user')")
                                     if user_data:
                                         user_obj = json.loads(user_data)
