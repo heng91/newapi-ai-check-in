@@ -15,6 +15,7 @@ from camoufox.async_api import AsyncCamoufox
 from utils.config import AccountConfig, ProviderConfig
 from utils.browser_utils import parse_cookies, get_random_user_agent
 
+
 class CheckIn:
     """newapi.ai 签到管理类"""
 
@@ -65,7 +66,9 @@ class CheckIn:
         except Exception as e:
             print(f"⚠️ {self.account_name}: Failed to take screenshot: {e}")
 
-    def check_and_handle_response(self,response: httpx.Response, context: str = "response") -> dict | None:
+    def check_and_handle_response(
+        self, client: httpx.Client, response: httpx.Response, context: str = "response"
+    ) -> dict | None:
         """检查响应类型，如果是 HTML 则保存为文件，否则返回 JSON 数据
 
         Args:
@@ -76,26 +79,60 @@ class CheckIn:
             JSON 数据字典，如果响应是 HTML 则返回 None
         """
         content_type = response.headers.get("content-type", "").lower()
-        
+
         # 创建 logs 目录
         logs_dir = "logs"
         os.makedirs(logs_dir, exist_ok=True)
-        
+
         safe_account_name = "".join(c if c.isalnum() else "_" for c in self.account_name)
         safe_context = "".join(c if c.isalnum() else "_" for c in context)
 
         # 检查是否是 HTML 响应
         if "text/html" in content_type or "text/plain" in content_type:
             # 保存 HTML 内容到文件
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")            
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"{safe_account_name}_{timestamp}_{safe_context}.html"
             filepath = os.path.join(logs_dir, filename)
 
             with open(filepath, "w", encoding="utf-8") as f:
                 f.write(response.text)
 
-            print(f"⚠️ {self.account_name}: Received HTML response instead of JSON, saved to: {filepath}")
-            return None
+            print(f"⚠️ {self.account_name}: Received HTML response, saved to: {filepath}")
+            print(f"📄 Response text:\n{response.text}\n")
+
+            # 使用 WaitForSecrets 获取新的 URL 进行重试
+            try:
+                from utils.wait_for_secrets import WaitForSecrets
+
+                wait_for_secrets = WaitForSecrets()
+                secret_obj = {
+                    "RETRY_URL": {
+                        "name": f"{self.account_name} - Retry URL",
+                        "description": (
+                            f"HTML response received for {context}. " "Please provide a new URL to retry the request."
+                        ),
+                    }
+                }
+
+                secrets = wait_for_secrets.get(secret_obj, timeout=5)
+                if secrets and "RETRY_URL" in secrets:
+                    retry_url = secrets["RETRY_URL"]
+                    print(f"🔄 {self.account_name}: Retrying with new URL: {retry_url}")
+
+                    # 使用新 URL 重新请求
+                    retry_response = client.get(retry_url)
+                    # 直接转 JSON，不再判断类型
+                    try:
+                        return retry_response.json()
+                    except json.JSONDecodeError as e:
+                        print(f"❌ {self.account_name}: Failed to parse JSON response: {e}")
+                        return None
+                else:
+                    print(f"⏭️ {self.account_name}: No retry URL provided, " "continuing with None")
+                    return None
+            except Exception as e:
+                print(f"❌ {self.account_name}: Error during retry with " f"WaitForSecrets: {e}")
+                return None
 
         # 如果是 JSON，正常解析
         try:
@@ -112,7 +149,6 @@ class CheckIn:
 
             print(f"⚠️ {self.account_name}: Invalid response saved to: {filepath}")
             return None
-
 
     async def get_waf_cookies_with_browser(self) -> dict | None:
         """使用 Camoufox 获取 WAF cookies（隐私模式）"""
@@ -226,7 +262,7 @@ class CheckIn:
             response = client.get(self.provider_config.get_status_url(), headers=headers, timeout=30)
 
             if response.status_code == 200:
-                data = self.check_and_handle_response(response, f"get_auth_client_id_{provider}")
+                data = self.check_and_handle_response(client, response, f"get_auth_client_id_{provider}")
                 if data is None:
 
                     # 尝试从浏览器 localStorage 获取状态
@@ -400,7 +436,7 @@ class CheckIn:
             response = client.get(self.provider_config.get_auth_state_url(), headers=headers, timeout=30)
 
             if response.status_code == 200:
-                json_data = self.check_and_handle_response(response, "get_auth_state")
+                json_data = self.check_and_handle_response(client, response, "get_auth_state")
                 if json_data is None:
                     # 尝试从浏览器 localStorage 获取状态
                     print(f"ℹ️ {self.account_name}: Getting auth state from browser")
@@ -506,7 +542,7 @@ class CheckIn:
             response = client.get(self.provider_config.get_user_info_url(), headers=headers, timeout=30)
 
             if response.status_code == 200:
-                json_data = self.check_and_handle_response(response, "get_user_info")
+                json_data = self.check_and_handle_response(client, response, "get_user_info")
                 if json_data is None:
                     return {
                         "success": False,
@@ -539,7 +575,7 @@ class CheckIn:
                 "error": f"Failed to get user info, {e}",
             }
 
-    def execute_check_in(self, client, headers: dict):
+    def execute_check_in(self, client: httpx.Client, headers: dict):
         """执行签到请求"""
         print(f"🌐 {self.account_name}: Executing check-in")
 
@@ -551,7 +587,7 @@ class CheckIn:
         print(f"📨 {self.account_name}: Response status code {response.status_code}")
 
         if response.status_code == 200:
-            json_data = self.check_and_handle_response(response, "execute_check_in")
+            json_data = self.check_and_handle_response(client, response, "execute_check_in")
             if json_data is None:
                 # 如果不是 JSON 响应（可能是 HTML），检查是否包含成功标识
                 if "success" in response.text.lower():
