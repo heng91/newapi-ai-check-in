@@ -893,6 +893,10 @@ class CheckIn:
                 print(f"❌ {self.account_name}: Unable to get WAF cookies")
                 # 即使 WAF cookies 失败，也继续尝试其他认证方式
                 print(f"✅ {self.account_name}: WAF cookies obtained")
+        elif self.provider_config.needs_aliyun_captcha_cookies():
+            waf_cookies = await self.get_aliyun_captcha_cookies_with_browser()
+            if not waf_cookies:
+                print(f"❌ {self.account_name}: Unable to get Aliyun captcha cookies")
         else:
             print(f"ℹ️ {self.account_name}: Bypass WAF not required, using user cookies directly")
 
