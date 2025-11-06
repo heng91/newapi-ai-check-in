@@ -852,7 +852,7 @@ class CheckIn:
                 self.provider_config.api_user_key: f"{api_user}",
             }
 
-            user_info = self.get_user_info(client, headers)
+            user_info = await self.get_user_info(client, headers)
             if user_info and user_info.get("success"):
                 success_msg = user_info.get("display", "User info retrieved successfully")
                 print(f"✅ {success_msg}")
