@@ -155,7 +155,7 @@ class WaitForSecrets:
             secrets_data = None
 
             print(f"⏳ Polling for secrets (timeout: {timeout} minute(s))...")
-            print(f"🔗 Visit this URL to input secrets: {secret_url}")
+            print(f"  🔗 Visit this URL to input secrets: {secret_url}")
 
             while True:
                 elapsed = time.time() - start_time

@@ -98,41 +98,7 @@ class CheckIn:
                 f.write(response.text)
 
             print(f"⚠️ {self.account_name}: Received HTML response, saved to: {filepath}")
-            print(f"📄 Response text:\n{response.text}\n")
-
-            # 使用 WaitForSecrets 获取新的 URL 进行重试
-            try:
-                from utils.wait_for_secrets import WaitForSecrets
-
-                wait_for_secrets = WaitForSecrets()
-                secret_obj = {
-                    "RETRY_URL": {
-                        "name": f"{self.account_name} - Retry URL",
-                        "description": (
-                            f"HTML response received for {context}. " "Please provide a new URL to retry the request."
-                        ),
-                    }
-                }
-
-                secrets = wait_for_secrets.get(secret_obj, timeout=5)
-                if secrets and "RETRY_URL" in secrets:
-                    retry_url = secrets["RETRY_URL"]
-                    print(f"🔄 {self.account_name}: Retrying with new URL: {retry_url}")
-
-                    # 使用新 URL 重新请求
-                    retry_response = client.get(retry_url)
-                    # 直接转 JSON，不再判断类型
-                    try:
-                        return retry_response.json()
-                    except json.JSONDecodeError as e:
-                        print(f"❌ {self.account_name}: Failed to parse JSON response: {e}")
-                        return None
-                else:
-                    print(f"⏭️ {self.account_name}: No retry URL provided, " "continuing with None")
-                    return None
-            except Exception as e:
-                print(f"❌ {self.account_name}: Error during retry with " f"WaitForSecrets: {e}")
-                return None
+            return None
 
         # 如果是 JSON，正常解析
         try:
@@ -246,6 +212,11 @@ class CheckIn:
                     if traceid:
                         print(f"⚠️ {self.account_name}: Aliyun captcha detected, " f"traceid: {traceid}")
 
+                        try:
+                            await page.wait_for_function('!!window.requestInfo', timeout=5000)
+                        except Exception:
+                            await page.wait_for_timeout(3000)
+
                         # 提取验证码相关数据
                         captcha_data = await page.evaluate(
                             """() => {
@@ -279,7 +250,7 @@ class CheckIn:
                         )
 
                         print(
-                            f"📋 {self.account_name}: Captcha data extracted: " f"{json.dumps(captcha_data, indent=2)}"
+                            f"📋 {self.account_name}: Captcha data extracted: " f"\n{json.dumps(captcha_data, indent=2)}"
                         )
 
                         # 通过 WaitForSecrets 发送验证码数据并等待用户手动验证
@@ -304,10 +275,8 @@ class CheckIn:
                             timeout=300,
                             notification={
                                 "title": "阿里云验证",
-                                "content": "请在浏览器中完成验证（[操作说明](https://github.com/aceHubert/newapi-ai-check-in/docs/aliyun_captcha/README.md）），并提供下一步的 URL。"
-                                "``` json"
-                                f"{json.dumps(captcha_data, indent=2)}"
-                                "```",
+                                "content": "请在浏览器中完成验证（操作说明https://github.com/aceHubert/newapi-ai-check-in/docs/aliyun_captcha/README.md），并提供下一步的 URL。\n"
+                                f"{json.dumps(captcha_data, indent=2)}\n",
                             },
                         )
                         if not secrets or "CAPTCHA_NEXT_URL" not in secrets:
