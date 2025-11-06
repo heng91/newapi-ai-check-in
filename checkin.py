@@ -110,6 +110,13 @@ class CheckIn:
                             steps=2,
                         )
                         await page.mouse.up()
+
+                        # Wait for page to be fully loaded
+                        try:
+                            await page.wait_for_function('document.readyState === "complete"', timeout=5000)
+                        except Exception:
+                            await page.wait_for_timeout(3000)
+
                         await self._take_screenshot(page, "aliyun_captcha_slider_result")
                         return True
                     else:
@@ -565,9 +572,18 @@ class CheckIn:
 
                     response = await page.evaluate(
                         f"""async () => {{
-                           const response = await fetch('{self.provider_config.get_auth_state_url()}');
-                           const data = await response.json();
-                           return data;
+                            let text;
+                            try{{
+                                const response = await fetch('{self.provider_config.get_auth_state_url()}');
+                                text = await response.text();
+                                const data = await response.json();
+                                return data;
+                            }}catch(e){{
+                                return {{
+                                    success:false,
+                                    message: text
+                                }};
+                            }}
                         }}"""
                     )
 
