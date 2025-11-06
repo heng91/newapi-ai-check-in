@@ -8,7 +8,7 @@ import hashlib
 import os
 import tempfile
 from datetime import datetime
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse
 
 import httpx
 from camoufox.async_api import AsyncCamoufox
@@ -99,6 +99,8 @@ class CheckIn:
                         print(f"📸 {self.account_name}: Slider handle bounding box: {handle}")
 
                     if slider and handle:
+                        await self._take_screenshot(page, "aliyun_captcha_slider_start")
+                        
                         await page.mouse.move(
                             handle.get("x") + handle.get("width") / 2,
                             handle.get("y") + handle.get("height") / 2,
@@ -112,10 +114,7 @@ class CheckIn:
                         await page.mouse.up()
 
                         # Wait for page to be fully loaded
-                        try:
-                            await page.wait_for_function('document.readyState === "complete"', timeout=5000)
-                        except Exception:
-                            await page.wait_for_timeout(3000)
+                        await page.wait_for_timeout(10000)
 
                         await self._take_screenshot(page, "aliyun_captcha_slider_result")
                         return True
@@ -154,36 +153,35 @@ class CheckIn:
         logs_dir = "logs"
         os.makedirs(logs_dir, exist_ok=True)
 
-        safe_account_name = "".join(c if c.isalnum() else "_" for c in self.account_name)
-        safe_context = "".join(c if c.isalnum() else "_" for c in context)
-
-        # 检查是否是 HTML 响应
-        if "text/html" in content_type or "text/plain" in content_type:
-            # 保存 HTML 内容到文件
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"{safe_account_name}_{timestamp}_{safe_context}.html"
-            filepath = os.path.join(logs_dir, filename)
-
-            with open(filepath, "w", encoding="utf-8") as f:
-                f.write(response.text)
-
-            print(f"⚠️ {self.account_name}: Received HTML response, saved to: {filepath}")
-            return None
-
         # 如果是 JSON，正常解析
         try:
             return response.json()
         except json.JSONDecodeError as e:
             print(f"❌ {self.account_name}: Failed to parse JSON response: {e}")
-            # 即使不是 HTML，如果 JSON 解析失败，也保存原始内容
+            
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"{safe_account_name}_{timestamp}_{safe_context}_invalid.txt"
-            filepath = os.path.join(logs_dir, filename)
+            safe_account_name = "".join(c if c.isalnum() else "_" for c in self.account_name)
+            safe_context = "".join(c if c.isalnum() else "_" for c in context)
 
-            with open(filepath, "w", encoding="utf-8") as f:
-                f.write(response.text)
+            # 检查是否是 HTML 响应
+            if "text/html" in content_type or "text/plain" in content_type:
+                # 保存 HTML 内容到文件
+                filename = f"{safe_account_name}_{timestamp}_{safe_context}.html"
+                filepath = os.path.join(logs_dir, filename)
 
-            print(f"⚠️ {self.account_name}: Invalid response saved to: {filepath}")
+                with open(filepath, "w", encoding="utf-8") as f:
+                    f.write(response.text)
+
+                print(f"⚠️ {self.account_name}: Received HTML response, saved to: {filepath}")
+            else:
+                # 即使不是 HTML，如果 JSON 解析失败，也保存原始内容
+                filename = f"{safe_account_name}_{timestamp}_{safe_context}_invalid.txt"
+                filepath = os.path.join(logs_dir, filename)
+
+                with open(filepath, "w", encoding="utf-8") as f:
+                    f.write(response.text)
+
+                print(f"⚠️ {self.account_name}: Invalid response saved to: {filepath}")
             return None
 
     async def get_waf_cookies_with_browser(self) -> dict | None:
@@ -542,7 +540,7 @@ class CheckIn:
         Returns:
             包含 success、url、cookies 或 error 的字典
         """
-        print(f"ℹ️ {self.account_name}: Starting browser to get auth URL")
+        print(f"ℹ️ {self.account_name}: Starting browser to get auth state")
 
         with tempfile.TemporaryDirectory(prefix=f"camoufox_{self.account_name}_auth_") as user_data_dir:
             async with AsyncCamoufox(
