@@ -75,9 +75,9 @@ jobs:
       with:
         path: |
           storage-states
-        key: ${{ runner.os }}-stroage-state-${{ steps.camoufox-version.outputs.version }}
+        key: ${{ runner.os }}-storage-state-${{ steps.camoufox-version.outputs.version }}
         restore-keys: |
-          ${{ runner.os }}-stroage-state-
+          ${{ runner.os }}-storage-state-
 
     - name: 恢复余额历史缓存
       uses: actions/cache@v4

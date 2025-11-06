@@ -91,12 +91,12 @@ class CheckIn:
                     slider_element = await page.query_selector("#nocaptcha .nc_scale")
                     if slider_element:
                         slider = await slider_element.bounding_box()
-                        print(f"📸 {self.account_name}: Slider bounding box: {slider}")
+                        print(f"ℹ️ {self.account_name}: Slider bounding box: {slider}")
 
                     slider_handle = await page.query_selector("#nocaptcha .btn_slide")
                     if slider_handle:
                         handle = await slider_handle.bounding_box()
-                        print(f"📸 {self.account_name}: Slider handle bounding box: {handle}")
+                        print(f"ℹ️ {self.account_name}: Slider handle bounding box: {handle}")
 
                     if slider and handle:
                         await self._take_screenshot(page, "aliyun_captcha_slider_start")
@@ -115,7 +115,7 @@ class CheckIn:
                         await self._take_screenshot(page, "aliyun_captcha_slider_completed")                        
 
                         # Wait for page to be fully loaded
-                        await page.wait_for_timeout(10000)
+                        await page.wait_for_timeout(20000)
 
                         await self._take_screenshot(page, "aliyun_captcha_slider_result")
                         return True
@@ -623,7 +623,10 @@ class CheckIn:
                         if not auth_result.get("success"):
                             error_msg = auth_result.get("error", "Unknown error")
                             print(f"❌ {self.account_name}: {error_msg}")
-                            return False, {"error": "Failed to get auth state with browser"}
+                            return {
+                                "success": False,
+                                "error": "Failed to get auth state with browser",
+                            }
 
                         return auth_result
                     except Exception as browser_err:
