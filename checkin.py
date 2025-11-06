@@ -8,11 +8,58 @@ import hashlib
 import os
 import tempfile
 from urllib.parse import urlparse
+from datetime import datetime
 
 import httpx
 from playwright.async_api import async_playwright
 from utils.config import AccountConfig, ProviderConfig
 from utils.browser_utils import parse_cookies
+
+
+def check_and_handle_response(response: httpx.Response, context: str = "response") -> dict | None:
+    """检查响应类型，如果是 HTML 则保存为文件，否则返回 JSON 数据
+
+    Args:
+        response: httpx Response 对象
+        context: 上下文描述，用于生成文件名
+
+    Returns:
+        JSON 数据字典，如果响应是 HTML 则返回 None
+    """
+    content_type = response.headers.get("content-type", "").lower()
+
+    # 检查是否是 HTML 响应
+    if "text/html" in content_type or "text/plain" in content_type:
+        # 保存 HTML 内容到文件
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"response_{context}_{timestamp}.html"
+
+        # 创建 logs 目录
+        os.makedirs("logs", exist_ok=True)
+        filepath = os.path.join("logs", filename)
+
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write(response.text)
+
+        print(f"⚠️ Received HTML response instead of JSON, saved to: {filepath}")
+        return None
+
+    # 如果是 JSON，正常解析
+    try:
+        return response.json()
+    except json.JSONDecodeError as e:
+        print(f"❌ Failed to parse JSON response: {e}")
+        # 即使不是 HTML，如果 JSON 解析失败，也保存原始内容
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"response_{context}_invalid_{timestamp}.txt"
+        os.makedirs("logs", exist_ok=True)
+        filepath = os.path.join("logs", filename)
+
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write(response.text)
+
+        print(f"⚠️ Invalid response saved to: {filepath}")
+        return None
 
 
 class CheckIn:
@@ -99,7 +146,13 @@ class CheckIn:
             response = client.get(self.provider_config.get_status_url(), headers=headers, timeout=30)
 
             if response.status_code == 200:
-                data = response.json()
+                data = check_and_handle_response(response, f"get_auth_client_id_{provider}")
+                if data is None:
+                    return {
+                        "success": False,
+                        "error": f"Failed to get client id: Invalid response type (saved to logs)",
+                    }
+
                 if data.get("success"):
                     status_data = data.get("data", {})
                     oauth = status_data.get(f"{provider}_oauth", False)
@@ -130,7 +183,13 @@ class CheckIn:
             response = client.get(self.provider_config.get_auth_state_url(), headers=headers, timeout=30)
 
             if response.status_code == 200:
-                data = response.json()
+                data = check_and_handle_response(response, "get_auth_state")
+                if data is None:
+                    return {
+                        "success": False,
+                        "error": f"Failed to get auth state: Invalid response type (saved to logs)",
+                    }
+
                 if data.get("success"):
                     auth_data = data.get("data")
 
@@ -179,7 +238,13 @@ class CheckIn:
             response = client.get(self.provider_config.get_user_info_url(), headers=headers, timeout=30)
 
             if response.status_code == 200:
-                data = response.json()
+                data = check_and_handle_response(response, "get_user_info")
+                if data is None:
+                    return {
+                        "success": False,
+                        "error": f"Failed to get user info: Invalid response type (saved to logs)",
+                    }
+
                 if data.get("success"):
                     user_data = data.get("data", {})
                     quota = round(user_data.get("quota", 0) / 500000, 2)
@@ -212,23 +277,23 @@ class CheckIn:
         print(f"📨 {self.account_name}: Response status code {response.status_code}")
 
         if response.status_code == 200:
-            try:
-                result = response.json()
-                if result.get("ret") == 1 or result.get("code") == 0 or result.get("success"):
-                    print(f"✅ {self.account_name}: Check-in successful!")
-                    return True
-                else:
-                    error_msg = result.get("msg", result.get("message", "Unknown error"))
-                    print(f"❌ {self.account_name}: Check-in failed - {error_msg}")
-                    return False
-            except json.JSONDecodeError:
-                # 如果不是 JSON 响应，检查是否包含成功标识
+            result = check_and_handle_response(response, "execute_check_in")
+            if result is None:
+                # 如果不是 JSON 响应（可能是 HTML），检查是否包含成功标识
                 if "success" in response.text.lower():
                     print(f"✅ {self.account_name}: Check-in successful!")
                     return True
                 else:
                     print(f"❌ {self.account_name}: Check-in failed - Invalid response format")
                     return False
+
+            if result.get("ret") == 1 or result.get("code") == 0 or result.get("success"):
+                print(f"✅ {self.account_name}: Check-in successful!")
+                return True
+            else:
+                error_msg = result.get("msg", result.get("message", "Unknown error"))
+                print(f"❌ {self.account_name}: Check-in failed - {error_msg}")
+                return False
         else:
             print(f"❌ {self.account_name}: Check-in failed - HTTP {response.status_code}")
             return False
