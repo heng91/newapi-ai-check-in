@@ -8,7 +8,7 @@ import hashlib
 import os
 import tempfile
 from datetime import datetime
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 
 import httpx
 from camoufox.async_api import AsyncCamoufox
@@ -225,9 +225,16 @@ class CheckIn:
                                 print(f"📸 {self.account_name}: Slider handle bounding box: {handle}")
 
                             if slider and handle:
-                                await page.mouse.move(handle.get("x") + handle.get("width") / 2, handle.get("y") + handle.get("height") / 2)
+                                await page.mouse.move(
+                                    handle.get("x") + handle.get("width") / 2,
+                                    handle.get("y") + handle.get("height") / 2,
+                                )
                                 await page.mouse.down()
-                                await page.mouse.move(handle.get("x") + slider.get("width"), handle.get("y") + handle.get("height") / 2, steps=2)
+                                await page.mouse.move(
+                                    handle.get("x") + slider.get("width"),
+                                    handle.get("y") + handle.get("height") / 2,
+                                    steps=2,
+                                )
                                 await page.mouse.up()
                             else:
                                 print(f"❌ {self.account_name}: Slider or handle not found")
@@ -235,7 +242,7 @@ class CheckIn:
                         except Exception as e:
                             print(f"❌ {self.account_name}: Error occurred while moving slider, {e}")
                             return None
-                        
+
                         # # 提取验证码相关数据
                         # captcha_data = await page.evaluate(
                         #     """() => {
@@ -496,10 +503,114 @@ class CheckIn:
                 "error": f"Failed to get client id, {e}",
             }
 
+    async def get_auth_state_with_browser(self, status: dict, wait_for_url: str) -> dict:
+        """使用 Camoufox 获取认证 URL 和 cookies
+
+        Args:
+            status: 要存储到 localStorage 的状态数据
+            wait_for_url: 要等待的 URL 模式
+
+        Returns:
+            包含 success、url、cookies 或 error 的字典
+        """
+        print(f"ℹ️ {self.account_name}: Starting Camoufox browser to get auth URL")
+
+        with tempfile.TemporaryDirectory(prefix=f"camoufox_{self.account_name}_auth_") as user_data_dir:
+            async with AsyncCamoufox(
+                user_data_dir=user_data_dir,
+                persistent_context=True,
+                headless=False,
+                humanize=True,
+                locale="en-US",
+            ) as browser:
+                page = await browser.new_page()
+
+                try:
+                    # 1. Open the login page first
+                    print(f"ℹ️ {self.account_name}: Opening login page")
+                    await page.goto(self.provider_config.get_login_url(), wait_until="networkidle")
+
+                    # Wait for page to be fully loaded
+                    try:
+                        await page.wait_for_function('document.readyState === "complete"', timeout=5000)
+                    except Exception:
+                        await page.wait_for_timeout(3000)
+
+                    await self._take_screenshot(page, "login_page_opened")
+
+                    # 2. Store status in localStorage (after page is loaded)
+                    print(f"ℹ️ {self.account_name}: Storing status in localStorage")
+                    status_json = json.dumps(status, ensure_ascii=False)
+                    # Escape single quotes for JavaScript string literal
+                    status_json_escaped = status_json.replace("'", "\\'")
+                    await page.evaluate(f"() => localStorage.setItem('status', '{status_json_escaped}')")
+
+                    # 3. Reload the page to apply localStorage changes
+                    print(f"ℹ️ {self.account_name}: Reloading page after setting localStorage")
+                    await page.reload()
+
+                    # Wait for page to be fully loaded after reload
+                    try:
+                        await page.wait_for_function('document.readyState === "complete"', timeout=5000)
+                    except Exception:
+                        await page.wait_for_timeout(3000)
+
+                    await self._take_screenshot(page, "login_page_reloaded")
+
+                    # 4. Click the main button[0] and wait for new tab
+                    print(f"ℹ️ {self.account_name}: Clicking main button")
+                    buttons = await page.query_selector_all("main button")
+                    if buttons and len(buttons) > 0:
+                        # Wait for new tab to open when clicking the button
+                        async with browser.expect_page() as new_page_info:
+                            await buttons[0].click()
+                        new_page = await new_page_info.value
+                        print(f"ℹ️ {self.account_name}: New tab opened")
+
+                    else:
+                        print(f"⚠️ {self.account_name}: No buttons found on page")
+                        await self._take_screenshot(page, "no_buttons_found")
+                        return {"success": False, "error": "No buttons found on login page"}
+
+                    await self._take_screenshot(new_page, "auth_page_opened")
+
+                    # 5. Get the first URL of the new tab (don't wait for loading)
+                    print(f"ℹ️ {self.account_name}: New tab URL: {new_page.url}")
+
+                    # Check if URL matches the expected pattern
+                    current_url = None
+                    if wait_for_url in new_page.url:
+                        print(f"✅ {self.account_name}: New tab URL matches expected pattern")
+                        current_url = new_page.url
+                    else:
+                        print(f"⚠️ {self.account_name}: URL doesn't match pattern but continuing anyway")
+
+                    # 6. Get cookies from the browser
+                    cookies = await browser.cookies()
+                    print(f"ℹ️ {self.account_name}: Got {len(cookies)} cookies from browser")
+
+                    # 7. Return the new tab URL and cookies
+                    print(f"✅ {self.account_name}: Got auth URL from new tab: {current_url}")
+
+                    return {"success": True, "url": current_url, "cookies": cookies}
+
+                except Exception as e:
+                    print(f"❌ {self.account_name}: Error getting auth URL: {e}")
+                    await self._take_screenshot(page, "auth_url_error")
+                    return {"success": False, "error": f"Error getting auth URL: {e}"}
+                finally:
+                    await page.close()
+                    if "new_page" in locals():
+                        await new_page.close()
+
     async def get_auth_state(
         self,
         client: httpx.Client,
+        client_id: str,
         headers: dict,
+        provider: str,
+        wait_for_url: str,
+        return_to_key: str = "return_to",
     ) -> dict:
         """获取认证状态"""
         try:
@@ -508,6 +619,48 @@ class CheckIn:
             if response.status_code == 200:
                 json_data = self.check_and_handle_response(client, response, "get_auth_state")
                 if json_data is None:
+                    # 尝试从浏览器 localStorage 获取状态
+                    print(f"ℹ️ {self.account_name}: Getting auth state from browser")
+                    try:
+                        auth_result = await self.get_auth_state_with_browser(
+                            {f"{provider}_client_id": client_id, f"{provider}_oauth": True},
+                            wait_for_url,
+                        )
+
+                        if not auth_result.get("success"):
+                            error_msg = auth_result.get("error", "Unknown error")
+                            print(f"❌ {self.account_name}: {error_msg}")
+                            return False, {"error": "Failed to get auth URL with browser"}
+
+                        # 提取 return_to 参数
+                        auth_url = auth_result.get("url")
+                        print(f"ℹ️ {self.account_name}: Extracted auth url: {auth_url}")
+                        parsed_url = urlparse(auth_url)
+                        query_params = parse_qs(parsed_url.query)
+                        return_to = query_params.get(return_to_key, [None])[0]
+
+                        if return_to:
+                            print(f"ℹ️ {self.account_name}: Extracted return_to: {return_to}")
+
+                            # 从 return_to URL 中提取 state 参数
+                            return_to_parsed = urlparse(return_to)
+                            return_to_params = parse_qs(return_to_parsed.query)
+                            auth_state = return_to_params.get("state", [None])[0]
+
+                            if auth_state:
+                                print(f"ℹ️ {self.account_name}: Extracted state from return_to: {auth_state}")
+                                return {
+                                    "success": True,
+                                    "state": auth_state,
+                                    "cookies": auth_result.get("cookies", []),
+                                }
+                            else:
+                                print(f"⚠️ {self.account_name}: No state parameter found in return_to URL")
+                        else:
+                            print(f"⚠️ {self.account_name}: No return_to parameter found in URL")
+                    except Exception as browser_err:
+                        print(f"⚠️ {self.account_name}: Failed to get auth state from browser: " f"{browser_err}")
+
                     return {
                         "success": False,
                         "error": "Failed to get auth state: Invalid response type (saved to logs)",
@@ -724,7 +877,10 @@ class CheckIn:
             # # 获取 OAuth 认证状态
             auth_state_result = await self.get_auth_state(
                 client=client,
+                client_id=client_id_result["client_id"],
                 headers=headers,
+                provider="github",
+                wait_for_url="https://github.com/login",
             )
             if auth_state_result and auth_state_result.get("success"):
                 print(f"ℹ️ {self.account_name}: Got auth state for GitHub: {auth_state_result['state']}")
@@ -826,7 +982,10 @@ class CheckIn:
             # 获取 OAuth 认证状态
             auth_state_result = await self.get_auth_state(
                 client=client,
+                client_id=client_id_result["client_id"],
                 headers=headers,
+                provider="linuxdo",
+                wait_for_url="https://linux.do/login",
             )
             if auth_state_result and auth_state_result.get("success"):
                 print(f"ℹ️ {self.account_name}: Got auth state for Linux.do: {auth_state_result['state']}")
