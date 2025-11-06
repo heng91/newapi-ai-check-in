@@ -196,7 +196,7 @@ class WaitForSecrets:
                                 print(f"✅ Secrets received: {secrets_data}")
                                 break
                         else:
-                            print(f"🔗 Visit this URL to input secrets: {secret_url}")
+                            print(f"  🔗 Visit this URL to input secrets: {secret_url}")
                             # Wait before next polling
                             time.sleep(9)
                     else:

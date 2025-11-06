@@ -245,6 +245,17 @@ class CheckIn:
                             // 获取当前 URL
                             data.currentUrl = window.location.href;
 
+                            // 获取页面中所有 <script> 标签的内容 (仅内联脚本，排除外部引用)
+                            const scriptElements = document.querySelectorAll('script');
+                            data.scripts = Array.from(scriptElements)
+                                .filter(script => !script.src)
+                                .map((script, index) => {
+                                    return {
+                                        index: index,
+                                        content: script.textContent
+                                    };
+                                });
+
                             return data;
                         }"""
                         )
@@ -275,8 +286,9 @@ class CheckIn:
                             timeout=300,
                             notification={
                                 "title": "阿里云验证",
-                                "content": "请在浏览器中完成验证（操作说明https://github.com/aceHubert/newapi-ai-check-in/docs/aliyun_captcha/README.md），并提供下一步的 URL。\n"
-                                f"{json.dumps(captcha_data, indent=2)}\n",
+                                "content": "请在浏览器中完成验证，并提供下一步的 URL。\n"
+                                f"{json.dumps(captcha_data, indent=2)}\n"
+                                "📋 操作说明：https://github.com/aceHubert/newapi-ai-check-in/docs/aliyun_captcha/README.md",
                             },
                         )
                         if not secrets or "CAPTCHA_NEXT_URL" not in secrets:
