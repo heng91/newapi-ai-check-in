@@ -112,6 +112,7 @@ class CheckIn:
                             steps=2,
                         )
                         await page.mouse.up()
+                        await self._take_screenshot(page, "aliyun_captcha_slider_completed")                        
 
                         # Wait for page to be fully loaded
                         await page.wait_for_timeout(10000)
@@ -572,16 +573,13 @@ class CheckIn:
 
                     response = await page.evaluate(
                         f"""async () => {{
-                            let text;
                             try{{
                                 const response = await fetch('{self.provider_config.get_auth_state_url()}');
-                                text = await response.text();
                                 const data = await response.json();
                                 return data;
                             }}catch(e){{
                                 return {{
                                     success: false,
-                                    text: text,
                                     message: e.message
                                 }};
                             }}
@@ -636,6 +634,7 @@ class CheckIn:
                         "error": "Failed to get auth state: Invalid response type (saved to logs)",
                     }
 
+                # 检查响应是否成功
                 if json_data.get("success"):
                     auth_data = json_data.get("data")
 
@@ -1033,7 +1032,10 @@ class CheckIn:
                     return False, {"error": "Failed to get Linux.do client ID"}
 
             # 获取 OAuth 认证状态
-            auth_state_result = await self.get_auth_state_with_browser()
+            auth_state_result = await self.get_auth_state(
+                client=client,
+                headers=headers,
+            )
             if auth_state_result and auth_state_result.get("success"):
                 print(f"ℹ️ {self.account_name}: Got auth state for Linux.do: {auth_state_result['state']}")
             else:
