@@ -18,6 +18,7 @@ from utils.browser_utils import parse_cookies, get_random_user_agent
 
 class CheckIn:
     """newapi.ai 签到管理类"""
+
     def __init__(
         self,
         account_name: str,
@@ -80,6 +81,57 @@ class CheckIn:
 
         # 转换为 httpx.URL 对象
         return httpx.URL(proxy_url)
+
+    def _check_and_handle_response(self, response: httpx.Response, context: str = "response") -> dict | None:
+        """检查响应类型，如果是 HTML 则保存为文件，否则返回 JSON 数据
+
+        Args:
+            response: httpx Response 对象
+            context: 上下文描述，用于生成文件名
+
+        Returns:
+            JSON 数据字典，如果响应是 HTML 则返回 None
+        """
+
+        # 创建 logs 目录
+        logs_dir = "logs"
+        os.makedirs(logs_dir, exist_ok=True)
+
+        # 如果是 JSON，正常解析
+        try:
+            return response.json()
+        except json.JSONDecodeError as e:
+            print(f"❌ {self.account_name}: Failed to parse JSON response: {e}")
+
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            safe_account_name = "".join(c if c.isalnum() else "_" for c in self.account_name)
+            safe_context = "".join(c if c.isalnum() else "_" for c in context)
+
+            content_type = response.headers.get("content-type", "").lower()
+
+            # 检查是否是 HTML 响应
+            if "text/html" in content_type or "text/plain" in content_type:
+                # 保存 HTML 内容到文件
+                filename = f"{safe_account_name}_{timestamp}_{safe_context}.html"
+                filepath = os.path.join(logs_dir, filename)
+
+                with open(filepath, "w", encoding="utf-8") as f:
+                    f.write(response.text)
+
+                print(f"⚠️ {self.account_name}: Received HTML response, saved to: {filepath}")
+            else:
+                # 即使不是 HTML，如果 JSON 解析失败，也保存原始内容
+                filename = f"{safe_account_name}_{timestamp}_{safe_context}_invalid.txt"
+                filepath = os.path.join(logs_dir, filename)
+
+                with open(filepath, "w", encoding="utf-8") as f:
+                    f.write(response.text)
+
+                print(f"⚠️ {self.account_name}: Invalid response saved to: {filepath}")
+            return None
+        except Exception as e:
+            print(f"❌ {self.account_name}: Error occurred while checking and handling response: {e}")
+            return None
 
     async def _take_screenshot(self, page, reason: str) -> None:
         """截取当前页面的屏幕截图
@@ -174,57 +226,6 @@ class CheckIn:
             print(f"❌ {self.account_name}: Error occurred while getting traceid, {e}")
             await self._take_screenshot(page, "aliyun_captcha_error")
             return False
-
-    def _check_and_handle_response(self, response: httpx.Response, context: str = "response") -> dict | None:
-        """检查响应类型，如果是 HTML 则保存为文件，否则返回 JSON 数据
-
-        Args:
-            response: httpx Response 对象
-            context: 上下文描述，用于生成文件名
-
-        Returns:
-            JSON 数据字典，如果响应是 HTML 则返回 None
-        """
-
-        # 创建 logs 目录
-        logs_dir = "logs"
-        os.makedirs(logs_dir, exist_ok=True)
-
-        # 如果是 JSON，正常解析
-        try:
-            return response.json()
-        except json.JSONDecodeError as e:
-            print(f"❌ {self.account_name}: Failed to parse JSON response: {e}")
-
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            safe_account_name = "".join(c if c.isalnum() else "_" for c in self.account_name)
-            safe_context = "".join(c if c.isalnum() else "_" for c in context)
-
-            content_type = response.headers.get("content-type", "").lower()
-
-            # 检查是否是 HTML 响应
-            if "text/html" in content_type or "text/plain" in content_type:
-                # 保存 HTML 内容到文件
-                filename = f"{safe_account_name}_{timestamp}_{safe_context}.html"
-                filepath = os.path.join(logs_dir, filename)
-
-                with open(filepath, "w", encoding="utf-8") as f:
-                    f.write(response.text)
-
-                print(f"⚠️ {self.account_name}: Received HTML response, saved to: {filepath}")
-            else:
-                # 即使不是 HTML，如果 JSON 解析失败，也保存原始内容
-                filename = f"{safe_account_name}_{timestamp}_{safe_context}_invalid.txt"
-                filepath = os.path.join(logs_dir, filename)
-
-                with open(filepath, "w", encoding="utf-8") as f:
-                    f.write(response.text)
-
-                print(f"⚠️ {self.account_name}: Invalid response saved to: {filepath}")
-            return None
-        except Exception as e:
-            print(f"❌ {self.account_name}: Error occurred while checking and handling response: {e}")
-            return None
 
     async def get_waf_cookies_with_browser(self) -> dict | None:
         """使用 Camoufox 获取 WAF cookies（隐私模式）"""
@@ -528,26 +529,26 @@ class CheckIn:
                 if data is None:
 
                     # 尝试从浏览器 localStorage 获取状态
-                    print(f"ℹ️ {self.account_name}: Getting status from browser")
-                    try:
-                        status_data = await self.get_status_with_browser()
-                        if status_data:
-                            oauth = status_data.get(f"{provider}_oauth", False)
-                            if not oauth:
-                                return {
-                                    "success": False,
-                                    "error": f"{provider} OAuth is not enabled.",
-                                }
+                    # print(f"ℹ️ {self.account_name}: Getting status from browser")
+                    # try:
+                    #     status_data = await self.get_status_with_browser()
+                    #     if status_data:
+                    #         oauth = status_data.get(f"{provider}_oauth", False)
+                    #         if not oauth:
+                    #             return {
+                    #                 "success": False,
+                    #                 "error": f"{provider} OAuth is not enabled.",
+                    #             }
 
-                            client_id = status_data.get(f"{provider}_client_id", "")
-                            if client_id:
-                                print(f"✅ {self.account_name}: Got client ID from localStorage: " f"{client_id}")
-                                return {
-                                    "success": True,
-                                    "client_id": client_id,
-                                }
-                    except Exception as browser_err:
-                        print(f"⚠️ {self.account_name}: Failed to get status from browser: " f"{browser_err}")
+                    #         client_id = status_data.get(f"{provider}_client_id", "")
+                    #         if client_id:
+                    #             print(f"✅ {self.account_name}: Got client ID from localStorage: " f"{client_id}")
+                    #             return {
+                    #                 "success": True,
+                    #                 "client_id": client_id,
+                    #             }
+                    # except Exception as browser_err:
+                    #     print(f"⚠️ {self.account_name}: Failed to get status from browser: " f"{browser_err}")
 
                     return {
                         "success": False,
@@ -671,21 +672,21 @@ class CheckIn:
                 json_data = self._check_and_handle_response(response, "get_auth_state")
                 if json_data is None:
                     # 尝试从浏览器 localStorage 获取状态
-                    print(f"ℹ️ {self.account_name}: Getting auth state from browser")
-                    try:
-                        auth_result = await self.get_auth_state_with_browser()
+                    # print(f"ℹ️ {self.account_name}: Getting auth state from browser")
+                    # try:
+                    #     auth_result = await self.get_auth_state_with_browser()
 
-                        if not auth_result.get("success"):
-                            error_msg = auth_result.get("error", "Unknown error")
-                            print(f"❌ {self.account_name}: {error_msg}")
-                            return {
-                                "success": False,
-                                "error": "Failed to get auth state with browser",
-                            }
+                    #     if not auth_result.get("success"):
+                    #         error_msg = auth_result.get("error", "Unknown error")
+                    #         print(f"❌ {self.account_name}: {error_msg}")
+                    #         return {
+                    #             "success": False,
+                    #             "error": "Failed to get auth state with browser",
+                    #         }
 
-                        return auth_result
-                    except Exception as browser_err:
-                        print(f"⚠️ {self.account_name}: Failed to get auth state from browser: " f"{browser_err}")
+                    #     return auth_result
+                    # except Exception as browser_err:
+                    #     print(f"⚠️ {self.account_name}: Failed to get auth state from browser: " f"{browser_err}")
 
                     return {
                         "success": False,
@@ -701,14 +702,15 @@ class CheckIn:
                     if response.cookies:
                         parsed_domain = urlparse(self.provider_config.origin).netloc
 
+                        print(f"ℹ️ {self.account_name}: Got {len(response.cookies)} cookies from auth state request")
                         for cookie in response.cookies.jar:
                             http_only = cookie.httponly if cookie.has_nonstandard_attr("httponly") else False
                             same_site = cookie.samesite if cookie.has_nonstandard_attr("samesite") else "Lax"
                             print(
-                                f"ℹ️ Cookie: {cookie.name}, Domain: {cookie.domain}, "
+                                f"  📚 Cookie: {cookie.name} (Domain: {cookie.domain}, "
                                 f"Path: {cookie.path}, Expires: {cookie.expires}, "
                                 f"HttpOnly: {http_only}, Secure: {cookie.secure}, "
-                                f"SameSite: {same_site}"
+                                f"SameSite: {same_site})"
                             )
                             cookies.append(
                                 {
@@ -910,7 +912,9 @@ class CheckIn:
         self, cookies: dict, api_user: str | int, needs_check_in: bool | None = None
     ) -> tuple[bool, dict]:
         """使用已有 cookies 执行签到操作"""
-        print(f"ℹ️ {self.account_name}: Executing check-in with existing cookies (using proxy: {'true' if self.http_proxy_config else 'false'})")
+        print(
+            f"ℹ️ {self.account_name}: Executing check-in with existing cookies (using proxy: {'true' if self.http_proxy_config else 'false'})"
+        )
 
         client = httpx.Client(http2=True, timeout=30.0, proxy=self.http_proxy_config)
         try:
@@ -954,7 +958,9 @@ class CheckIn:
 
     async def check_in_with_github(self, username: str, password: str, waf_cookies: dict) -> tuple[bool, dict]:
         """使用 GitHub 账号执行签到操作"""
-        print(f"ℹ️ {self.account_name}: Executing check-in with GitHub account (using proxy: {'true' if self.http_proxy_config else 'false'})")
+        print(
+            f"ℹ️ {self.account_name}: Executing check-in with GitHub account (using proxy: {'true' if self.http_proxy_config else 'false'})"
+        )
 
         client = httpx.Client(http2=True, timeout=30.0, proxy=self.http_proxy_config)
         try:
@@ -981,7 +987,7 @@ class CheckIn:
                     "success": True,
                     "client_id": self.provider_config.github_client_id,
                 }
-                print(f"ℹ️ {self.account_name}: Using GitHub client ID from config: " f"{client_id_result['client_id']}")
+                print(f"ℹ️ {self.account_name}: Using GitHub client ID from config")
             else:
                 client_id_result = await self.get_auth_client_id(client, headers, "github")
                 if client_id_result and client_id_result.get("success"):
@@ -1055,7 +1061,9 @@ class CheckIn:
             password: Linux.do 密码
             waf_cookies: WAF cookies
         """
-        print(f"ℹ️ {self.account_name}: Executing check-in with Linux.do account (using proxy: {'true' if self.http_proxy_config else 'false'})")
+        print(
+            f"ℹ️ {self.account_name}: Executing check-in with Linux.do account (using proxy: {'true' if self.http_proxy_config else 'false'})"
+        )
 
         client = httpx.Client(http2=True, timeout=30.0, proxy=self.http_proxy_config)
         try:
@@ -1082,9 +1090,7 @@ class CheckIn:
                     "success": True,
                     "client_id": self.provider_config.linuxdo_client_id,
                 }
-                print(
-                    f"ℹ️ {self.account_name}: Using Linux.do client ID from config: " f"{client_id_result['client_id']}"
-                )
+                print(f"ℹ️ {self.account_name}: Using Linux.do client ID from config")
             else:
                 client_id_result = await self.get_auth_client_id(client, headers, "linuxdo")
                 if client_id_result and client_id_result.get("success"):
