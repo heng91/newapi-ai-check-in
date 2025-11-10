@@ -37,8 +37,8 @@ class CheckIn:
         self.provider_config = provider_config
 
         # 代理优先级: 账号配置 > 全局配置
-        self.global_proxy_config = global_proxy
         self.camoufox_proxy_config = account_config.proxy if account_config.proxy else global_proxy
+        # httpx.Client proxy 转换
         self.http_proxy_config = self._get_http_proxy(self.camoufox_proxy_config)
 
         # storage-states 目录
@@ -1012,7 +1012,7 @@ class CheckIn:
             github = GitHubSignIn(
                 account_name=self.account_name,
                 provider_config=self.provider_config,
-                proxy_config=self.global_proxy_config,
+                proxy_config=self.camoufox_proxy_config,
                 username=username,
                 password=password,
             )
@@ -1115,7 +1115,7 @@ class CheckIn:
             linuxdo = LinuxDoSignIn(
                 account_name=self.account_name,
                 provider_config=self.provider_config,
-                proxy_config=self.global_proxy_config,
+                proxy_config=self.camoufox_proxy_config,
                 username=username,
                 password=password,
             )
