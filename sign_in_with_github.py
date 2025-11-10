@@ -23,12 +23,14 @@ class GitHubSignIn:
         provider_config: ProviderConfig,
         username: str,
         password: str,
+        proxy_config: dict | None,
     ):
         """初始化
 
         Args:
             account_name: 账号名称
             provider_config: 提供商配置
+            proxy_conf
             username: GitHub 用户名
             password: GitHub 密码
         """
@@ -36,6 +38,7 @@ class GitHubSignIn:
         self.provider_config = provider_config
         self.username = username
         self.password = password
+        self.proxy_config = proxy_config
 
     async def _take_screenshot(self, page, reason: str) -> None:
         """截取当前页面的屏幕截图
@@ -80,15 +83,17 @@ class GitHubSignIn:
             (成功标志, 结果字典)
         """
         print(f"ℹ️ {self.account_name}: Executing sign-in with GitHub account")
-        print(f"ℹ️ {self.account_name}: Using client_id: {client_id}, auth_state: {auth_state}")
+        print(f"ℹ️ {self.account_name}: Using client_id: {client_id}, auth_state: {auth_state}, proxy: {'true' if self.proxy_config else 'false'}")
 
-        with tempfile.TemporaryDirectory() as temp_dir:
+        with tempfile.TemporaryDirectory(prefix="camoufox_github_sign_in_") as user_data_dir:
             async with AsyncCamoufox(
                 persistent_context=True,
-                user_data_dir=temp_dir,
+                user_data_dir=user_data_dir,
                 headless=False,
                 humanize=True,
                 locale="en-US",
+                geoip=True if self.proxy_config else False,
+                proxy=self.proxy_config,
             ) as browser:
                 # 检查缓存文件是否存在，从缓存文件中恢复会话 cookies
                 if os.path.exists(cache_file_path):
@@ -100,7 +105,7 @@ class GitHubSignIn:
                             if cookies:
                                 # 获取域名用于设置 cookies
                                 parsed_domain = urlparse(self.provider_config.origin).netloc
-                                camoufox_cookies = []
+                                restore_cookies = []
                                 for cookie in cookies:
                                     cookie_data = {
                                         "name": cookie["name"],
@@ -112,10 +117,10 @@ class GitHubSignIn:
                                         "secure": cookie.get("secure", False),
                                         "sameSite": cookie.get("sameSite", "Lax"),
                                     }
-                                    camoufox_cookies.append(cookie_data)
+                                    restore_cookies.append(cookie_data)
 
-                                await browser.add_cookies(camoufox_cookies)
-                                print(f"✅ {self.account_name}: Restored {len(camoufox_cookies)} cookies from cache")
+                                await browser.add_cookies(restore_cookies)
+                                print(f"✅ {self.account_name}: Restored {len(restore_cookies)} cookies from cache")
                             else:
                                 print(f"⚠️ {self.account_name}: No cookies found in cache file")
                     except json.JSONDecodeError as e:

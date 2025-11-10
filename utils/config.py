@@ -159,6 +159,7 @@ class AccountConfig:
     name: str | None = None
     linux_do: dict | None = None
     github: dict | None = None
+    proxy: dict | None = None
 
     @classmethod
     def from_dict(cls, data: dict, index: int) -> "AccountConfig":
@@ -170,6 +171,7 @@ class AccountConfig:
         cookies = data.get("cookies", "")
         linux_do = data.get("linux.do")
         github = data.get("github")
+        proxy = data.get("proxy")
 
         return cls(
             provider=provider,
@@ -178,6 +180,7 @@ class AccountConfig:
             api_user=data.get("api_user", ""),
             linux_do=linux_do,
             github=github,
+            proxy=proxy,
         )
 
     def get_display_name(self, index: int = 0) -> str:

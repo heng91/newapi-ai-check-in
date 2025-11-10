@@ -92,6 +92,7 @@ jobs:
       env:
         ACCOUNTS: ${{ secrets.ACCOUNTS }}
         PROVIDERS: ${{ secrets.PROVIDERS }}
+        PROXY: ${{secrets.PROXY}}
         DINGDING_WEBHOOK: ${{ secrets.DINGDING_WEBHOOK }}
         EMAIL_USER: ${{ secrets.EMAIL_USER }}
         EMAIL_PASS: ${{ secrets.EMAIL_PASS }}

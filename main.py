@@ -7,7 +7,7 @@ import asyncio
 import hashlib
 import json
 import os
-import sys    
+import sys
 from datetime import datetime
 from dotenv import load_dotenv
 from utils.config import AppConfig, AccountConfig
@@ -47,8 +47,7 @@ def load_accounts() -> list[AccountConfig] | None:
             has_cookies = "cookies" in account
 
             if not has_linux_do and not has_github and not has_cookies:
-                print(f"❌ Account {i + 1} must have either 'linux.do', 'github', or 'cookies' "
-                      f"configuration")
+                print(f"❌ Account {i + 1} must have either 'linux.do', 'github', or 'cookies' " f"configuration")
                 return None
 
                 # 确保必要字段存在后再创建 AccountConfig
@@ -64,8 +63,7 @@ def load_accounts() -> list[AccountConfig] | None:
             if has_linux_do:
                 auth_config = account["linux.do"]
                 if not isinstance(auth_config, dict):
-                    print(f"❌ Account {i + 1} linux.do configuration must be a "
-                      f"dictionary")
+                    print(f"❌ Account {i + 1} linux.do configuration must be a " f"dictionary")
                     return None
 
                 # 验证必需字段
@@ -166,12 +164,24 @@ async def main():
             退出码: 0 表示至少有一个账号成功, 1 表示全部失败
     """
 
-
     print("🚀 newapi.ai multi-account auto check-in script started (using Camoufox)")
     print(f'🕒 Execution time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
 
     app_config = AppConfig.load_from_env()
     print(f"⚙️ Loaded {len(app_config.providers)} provider(s)")
+
+    # 加载全局代理配置
+    global_proxy = None
+    proxy_str = os.getenv("PROXY")
+    if proxy_str:
+        try:
+            # 尝试解析为 JSON
+            global_proxy = json.loads(proxy_str)
+            print("⚙️ Global proxy loaded from PROXY environment variable (dict format)")
+        except json.JSONDecodeError:
+            # 如果不是 JSON，则视为字符串
+            global_proxy = {"server": proxy_str}
+            print(f"⚙️ Global proxy loaded from PROXY environment variable: {proxy_str}")
 
     # 加载账号配置
     accounts = load_accounts()
@@ -191,24 +201,24 @@ async def main():
     current_balances = {}
     need_notify = False  # 是否需要发送通知
 
-    for i, account in enumerate(accounts):
+    for i, account_config in enumerate(accounts):
         account_key = f"account_{i + 1}"
-        account_name = account.get_display_name(i)
+        account_name = account_config.get_display_name(i)
         if len(notification_content) > 0:
             notification_content.append("\n-------------------------------")
 
         try:
-            provider_config = app_config.get_provider(account.provider)
+            provider_config = app_config.get_provider(account_config.provider)
             if not provider_config:
-                print(f"❌ {account_name}: Provider '{account.provider}' configuration not found")
+                print(f"❌ {account_name}: Provider '{account_config.provider}' configuration not found")
                 need_notify = True
                 notification_content.append(
-                    f"[FAIL] {account_name}: Provider '{account.provider}' configuration not found"
+                    f"[FAIL] {account_name}: Provider '{account_config.provider}' configuration not found"
                 )
                 continue
 
-            print(f"🌀 Processing {account_name} using provider '{account.provider}'")
-            checkin = CheckIn(account, provider_config, i)
+            print(f"🌀 Processing {account_name} using provider '{account_config.provider}'")
+            checkin = CheckIn(account_name, account_config, provider_config, global_proxy=global_proxy)
             results = await checkin.execute()
 
             total_count += len(results)
@@ -219,7 +229,7 @@ async def main():
             failed_methods = []
 
             this_account_balances = {}
-             # 构建详细的结果报告
+            # 构建详细的结果报告
             account_result = f"📣 {account_name} Summary:\n"
             for auth_method, success, user_info in results:
                 status = "✅ SUCCESS" if success else "❌ FAILED"
@@ -315,7 +325,7 @@ async def main():
     else:
         print("ℹ️ All accounts successful and no balance changes detected, notification skipped")
 
-	# 设置退出码
+    # 设置退出码
     sys.exit(0 if success_count > 0 else 1)
 
 

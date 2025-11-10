@@ -69,10 +69,10 @@ def filter_cookies(cookies: list[dict], origin: str) -> dict:
                 or normalized_cookie_domain.endswith("." + normalized_provider_domain)
             ):
                 user_cookies[cookie_name] = cookie_value
-                print(f"  ✅ Matched cookie: {cookie_name} (domain: {cookie_domain})")
+                print(f"  🔵 Matched cookie: {cookie_name} (domain: {cookie_domain})")
             else:
                 filtered_count += 1
-                print(f"  ❌ Filtered cookie: {cookie_name} (domain: {cookie_domain})")
+                print(f"  🔴 Filtered cookie: {cookie_name} (domain: {cookie_domain})")
 
     print(
         f"🔍 Cookie filtering result: "

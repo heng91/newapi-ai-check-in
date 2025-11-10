@@ -18,29 +18,68 @@ from utils.browser_utils import parse_cookies, get_random_user_agent
 
 class CheckIn:
     """newapi.ai 签到管理类"""
-
-    account_config: AccountConfig
-    account_name: str
-    provider_config: ProviderConfig
-    storage_state_dir: str
-
     def __init__(
         self,
+        account_name: str,
         account_config: AccountConfig,
         provider_config: ProviderConfig,
-        account_index: int,
+        global_proxy: dict | None = None,
         storage_state_dir: str = "storage-states",
     ):
         """初始化签到管理器
 
         Args:
                 account_info: account 用户配置
+                proxy_config: 全局代理配置(可选)
         """
-        self.account_name = account_config.name or f"Account {account_index + 1}"
-        self.account_info = account_config
+        self.account_name = account_name
+        self.account_config = account_config
         self.provider_config = provider_config
+
+        # 代理优先级: 账号配置 > 全局配置
+        self.global_proxy_config = global_proxy
+        self.camoufox_proxy_config = account_config.proxy if account_config.proxy else global_proxy
+        self.http_proxy_config = self._get_http_proxy(self.camoufox_proxy_config)
+
+        # storage-states 目录
         self.storage_state_dir = storage_state_dir
+
         os.makedirs(self.storage_state_dir, exist_ok=True)
+
+    @staticmethod
+    def _get_http_proxy(proxy_config: dict | None = None) -> httpx.URL | None:
+        """将 proxy_config 转换为 httpx.URL 格式的代理 URL
+
+        proxy_config 格式:
+        {
+            'server': 'http://example.com:8080',
+            'username': 'username',
+            'password': 'password'
+        }
+
+        Returns:
+            httpx.URL 格式的代理对象，如果没有配置代理则返回 None
+        """
+        if not proxy_config:
+            return None
+
+        # proxy_config 是字典格式，提取 server 字段
+        proxy_url = proxy_config.get("server")
+        if not proxy_url:
+            return None
+
+        # 如果有用户名和密码，将其嵌入到 URL 中
+        username = proxy_config.get("username")
+        password = proxy_config.get("password")
+
+        if username and password:
+            # 解析原始 URL
+            parsed = httpx.URL(proxy_url)
+            # 重新构建包含认证信息的 URL
+            return parsed.copy_with(username=username, password=password)
+
+        # 转换为 httpx.URL 对象
+        return httpx.URL(proxy_url)
 
     async def _take_screenshot(self, page, reason: str) -> None:
         """截取当前页面的屏幕截图
@@ -112,7 +151,7 @@ class CheckIn:
                             steps=2,
                         )
                         await page.mouse.up()
-                        await self._take_screenshot(page, "aliyun_captcha_slider_completed")                        
+                        await self._take_screenshot(page, "aliyun_captcha_slider_completed")
 
                         # Wait for page to be fully loaded
                         await page.wait_for_timeout(20000)
@@ -189,7 +228,9 @@ class CheckIn:
 
     async def get_waf_cookies_with_browser(self) -> dict | None:
         """使用 Camoufox 获取 WAF cookies（隐私模式）"""
-        print(f"ℹ️ {self.account_name}: Starting browser to get WAF cookies")
+        print(
+            f"ℹ️ {self.account_name}: Starting browser to get WAF cookies (using proxy: {'true' if self.camoufox_proxy_config else 'false'})"
+        )
 
         with tempfile.TemporaryDirectory(prefix=f"camoufox_{self.account_name}_waf_") as user_data_dir:
             async with AsyncCamoufox(
@@ -198,6 +239,8 @@ class CheckIn:
                 headless=False,
                 humanize=True,
                 locale="en-US",
+                geoip=True if self.camoufox_proxy_config else False,
+                proxy=self.camoufox_proxy_config,
             ) as browser:
                 page = await browser.new_page()
 
@@ -247,7 +290,9 @@ class CheckIn:
 
     async def get_aliyun_captcha_cookies_with_browser(self) -> dict | None:
         """使用 Camoufox 获取阿里云验证 cookies"""
-        print(f"ℹ️ {self.account_name}: Starting browser to get Aliyun captcha cookies")
+        print(
+            f"ℹ️ {self.account_name}: Starting browser to get Aliyun captcha cookies (using proxy: {'true' if self.camoufox_proxy_config else 'false'})"
+        )
 
         with tempfile.TemporaryDirectory(prefix=f"camoufox_{self.account_name}_aliyun_captcha_") as user_data_dir:
             async with AsyncCamoufox(
@@ -256,6 +301,8 @@ class CheckIn:
                 headless=False,
                 humanize=True,
                 locale="en-US",
+                geoip=True if self.camoufox_proxy_config else False,
+                proxy=self.camoufox_proxy_config,
             ) as browser:
                 page = await browser.new_page()
 
@@ -412,7 +459,9 @@ class CheckIn:
         Returns:
             状态数据字典
         """
-        print(f"ℹ️ {self.account_name}: Starting browser to get status")
+        print(
+            f"ℹ️ {self.account_name}: Starting browser to get status (using proxy: {'true' if self.camoufox_proxy_config else 'false'})"
+        )
 
         with tempfile.TemporaryDirectory(prefix=f"camoufox_{self.account_name}_status_") as user_data_dir:
             async with AsyncCamoufox(
@@ -421,6 +470,8 @@ class CheckIn:
                 headless=False,
                 humanize=True,
                 locale="en-US",
+                geoip=True if self.camoufox_proxy_config else False,
+                proxy=self.camoufox_proxy_config,
             ) as browser:
                 page = await browser.new_page()
 
@@ -543,7 +594,9 @@ class CheckIn:
         Returns:
             包含 success、url、cookies 或 error 的字典
         """
-        print(f"ℹ️ {self.account_name}: Starting browser to get auth state")
+        print(
+            f"ℹ️ {self.account_name}: Starting browser to get auth state (using proxy: {'true' if self.camoufox_proxy_config else 'false'})"
+        )
 
         with tempfile.TemporaryDirectory(prefix=f"camoufox_{self.account_name}_auth_") as user_data_dir:
             async with AsyncCamoufox(
@@ -552,6 +605,8 @@ class CheckIn:
                 headless=False,
                 humanize=True,
                 locale="en-US",
+                geoip=True if self.camoufox_proxy_config else False,
+                proxy=self.camoufox_proxy_config,
             ) as browser:
                 page = await browser.new_page()
 
@@ -695,7 +750,9 @@ class CheckIn:
         Returns:
             包含 success、quota、used_quota 或 error 的字典
         """
-        print(f"ℹ️ {self.account_name}: Starting browser to get user info")
+        print(
+            f"ℹ️ {self.account_name}: Starting browser to get user info (using proxy: {'true' if self.camoufox_proxy_config else 'false'})"
+        )
 
         with tempfile.TemporaryDirectory(prefix=f"camoufox_{self.account_name}_user_info_") as user_data_dir:
             async with AsyncCamoufox(
@@ -704,6 +761,8 @@ class CheckIn:
                 headless=False,
                 humanize=True,
                 locale="en-US",
+                geoip=True if self.camoufox_proxy_config else False,
+                proxy=self.camoufox_proxy_config,
             ) as browser:
                 page = await browser.new_page()
 
@@ -851,9 +910,9 @@ class CheckIn:
         self, cookies: dict, api_user: str | int, needs_check_in: bool | None = None
     ) -> tuple[bool, dict]:
         """使用已有 cookies 执行签到操作"""
-        print(f"ℹ️ {self.account_name}: Executing check-in with existing cookies")
+        print(f"ℹ️ {self.account_name}: Executing check-in with existing cookies (using proxy: {'true' if self.http_proxy_config else 'false'})")
 
-        client = httpx.Client(http2=True, timeout=30.0)
+        client = httpx.Client(http2=True, timeout=30.0, proxy=self.http_proxy_config)
         try:
             client.cookies.update(cookies)
 
@@ -895,9 +954,9 @@ class CheckIn:
 
     async def check_in_with_github(self, username: str, password: str, waf_cookies: dict) -> tuple[bool, dict]:
         """使用 GitHub 账号执行签到操作"""
-        print(f"ℹ️ {self.account_name}: Executing check-in with GitHub account")
+        print(f"ℹ️ {self.account_name}: Executing check-in with GitHub account (using proxy: {'true' if self.http_proxy_config else 'false'})")
 
-        client = httpx.Client(http2=True, timeout=30.0)
+        client = httpx.Client(http2=True, timeout=30.0, proxy=self.http_proxy_config)
         try:
             client.cookies.update(waf_cookies)
 
@@ -953,6 +1012,7 @@ class CheckIn:
             github = GitHubSignIn(
                 account_name=self.account_name,
                 provider_config=self.provider_config,
+                proxy_config=self.global_proxy_config,
                 username=username,
                 password=password,
             )
@@ -995,9 +1055,9 @@ class CheckIn:
             password: Linux.do 密码
             waf_cookies: WAF cookies
         """
-        print(f"ℹ️ {self.account_name}: Executing check-in with Linux.do account")
+        print(f"ℹ️ {self.account_name}: Executing check-in with Linux.do account (using proxy: {'true' if self.http_proxy_config else 'false'})")
 
-        client = httpx.Client(http2=True, timeout=30.0)
+        client = httpx.Client(http2=True, timeout=30.0, proxy=self.http_proxy_config)
         try:
             client.cookies.update(waf_cookies)
 
@@ -1055,6 +1115,7 @@ class CheckIn:
             linuxdo = LinuxDoSignIn(
                 account_name=self.account_name,
                 provider_config=self.provider_config,
+                proxy_config=self.global_proxy_config,
                 username=username,
                 password=password,
             )
@@ -1097,9 +1158,9 @@ class CheckIn:
             print(f"ℹ️ {self.account_name}: Bypass WAF not required, using user cookies directly")
 
         # 解析账号配置
-        cookies_data = self.account_info.cookies
-        github_info = self.account_info.github
-        linuxdo_info = self.account_info.linux_do
+        cookies_data = self.account_config.cookies
+        github_info = self.account_config.github
+        linuxdo_info = self.account_config.linux_do
         results = []
 
         # 尝试 cookies 认证
@@ -1111,7 +1172,7 @@ class CheckIn:
                     print(f"❌ {self.account_name}: Invalid cookies format")
                     results.append(("cookies", False, {"error": "Invalid cookies format"}))
                 else:
-                    api_user = self.account_info.api_user
+                    api_user = self.account_config.api_user
                     if not api_user:
                         print(f"❌ {self.account_name}: API user identifier not found for cookies")
                         results.append(("cookies", False, {"error": "API user identifier not found"}))

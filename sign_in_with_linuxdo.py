@@ -22,12 +22,14 @@ class LinuxDoSignIn:
         provider_config: ProviderConfig,
         username: str,
         password: str,
+        proxy_config: dict,
     ):
         """初始化
 
         Args:
             account_name: 账号名称
             provider_config: 提供商配置
+            proxy_config: 代理配置
             username: Linux.do 用户名
             password: Linux.do 密码
         """
@@ -35,6 +37,7 @@ class LinuxDoSignIn:
         self.provider_config = provider_config
         self.username = username
         self.password = password
+        self.proxy_config = proxy_config
 
     async def _take_screenshot(self, page, reason: str) -> None:
         """截取当前页面的屏幕截图
@@ -78,20 +81,24 @@ class LinuxDoSignIn:
         Returns:
             (成功标志, 用户信息字典)
         """
-        print(f"ℹ️ {self.account_name}: Executing check-in with Linux.do")
-        print(f"ℹ️ {self.account_name}: Using client_id: {client_id}, auth_state: {auth_state}")
+        print(f"ℹ️ {self.account_name}: Executing sign-in with Linux.do")
+        print(
+            f"ℹ️ {self.account_name}: Using client_id: {client_id}, auth_state: {auth_state}, proxy: {'true' if self.proxy_config else 'false'}"
+        )
 
         try:
-            with tempfile.TemporaryDirectory() as temp_dir:
+            with tempfile.TemporaryDirectory(prefix="camoufox_linux_do_sign_in_") as user_data_dir:
+                print(f"ℹ️ {self.account_name}: Using user_data_dir: {user_data_dir}")
                 # 使用 Camoufox 启动浏览器
                 async with AsyncCamoufox(
                     persistent_context=True,
-                    user_data_dir=temp_dir,
+                    user_data_dir=user_data_dir,
                     headless=False,
                     humanize=True,
                     locale="en-US",
-                ) as browser:  # 启用人性化行为
-
+                    geoip=True if self.proxy_config else False,
+                    proxy=self.proxy_config,
+                ) as browser:
                     # 检查缓存文件是否存在，从缓存文件中恢复会话 cookies
                     if os.path.exists(cache_file_path):
                         print(f"ℹ️ {self.account_name}: Found cache file, restoring session state")
@@ -102,7 +109,7 @@ class LinuxDoSignIn:
                                 if cookies:
                                     # 获取域名用于设置 cookies
                                     parsed_domain = urlparse(self.provider_config.origin).netloc
-                                    cookies = []
+                                    restore_cookies = []
                                     for cookie in cookies:
                                         cookie_data = {
                                             "name": cookie["name"],
@@ -114,10 +121,10 @@ class LinuxDoSignIn:
                                             "secure": cookie.get("secure", False),
                                             "sameSite": cookie.get("sameSite", "Lax"),
                                         }
-                                        cookies.append(cookie_data)
+                                        restore_cookies.append(cookie_data)
 
-                                    await browser.add_cookies(cookies)
-                                    print(f"✅ {self.account_name}: Restored {len(cookies)} cookies from cache")
+                                    await browser.add_cookies(restore_cookies)
+                                    print(f"✅ {self.account_name}: Restored {len(restore_cookies)} cookies from cache")
                                 else:
                                     print(f"⚠️ {self.account_name}: No cookies found in cache file")
                         except json.JSONDecodeError as e:
@@ -167,7 +174,7 @@ class LinuxDoSignIn:
                         # 如果未登录，则执行登录流程
                         if not is_logged_in:
                             try:
-                                print(f"ℹ️ {self.account_name}: Starting to sign in linux.do with Camoufox")
+                                print(f"ℹ️ {self.account_name}: Starting to sign in linux.do")
 
                                 await page.goto("https://linux.do/login", wait_until="domcontentloaded")
 
@@ -260,8 +267,8 @@ class LinuxDoSignIn:
                                     print(f"✅ {self.account_name}: OAuth authorization successful")
 
                                     # 提取 session cookie，只保留与 provider domain 匹配的
-                                    cookies = await page.context.cookies()
-                                    user_cookies = filter_cookies(cookies, self.provider_config.origin)
+                                    restore_cookies = await page.context.cookies()
+                                    user_cookies = filter_cookies(restore_cookies, self.provider_config.origin)
 
                                     return True, {"cookies": user_cookies, "api_user": api_user}
                                 else:
