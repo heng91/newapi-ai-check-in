@@ -33,6 +33,7 @@ class GitHubSignIn:
             password: GitHub 密码
         """
         self.account_name = account_name
+        self.safe_account_name = "".join(c if c.isalnum() else "_" for c in self.account_name)
         self.provider_config = provider_config
         self.username = username
         self.password = password
@@ -60,6 +61,32 @@ class GitHubSignIn:
             print(f"📸 {self.account_name}: Screenshot saved to {filepath}")
         except Exception as e:
             print(f"⚠️ {self.account_name}: Failed to take screenshot: {e}")
+
+    async def _save_page_content_to_file(self, page, reason: str) -> None:
+        """保存页面 HTML 到日志文件
+
+        Args:
+            page: Camoufox 页面对象
+            reason: 日志原因描述
+        """
+         
+        logs_dir = "logs"
+        os.makedirs(logs_dir, exist_ok=True)
+        
+        try:
+
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            safe_reason = "".join(c if c.isalnum() else "_" for c in reason)
+            filename = f"{self.safe_account_name}_{timestamp}_github_{safe_reason}.html"
+            filepath = os.path.join(logs_dir, filename)
+
+            html_content = await page.content()
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write(html_content)
+
+            print(f"📄 {self.account_name}: Page HTML saved to {filepath}")
+        except Exception as save_err:
+            print(f"⚠️ {self.account_name}: Failed to save HTML: {save_err}")
 
     async def signin(
         self,
@@ -158,6 +185,8 @@ class GitHubSignIn:
                             otp_input = await page.query_selector('input[name="otp"]')
                             if otp_input:
                                 print(f"ℹ️ {self.account_name}: Two-factor authentication required")
+                                
+                                await self._save_page_content_to_file(page, 'opt_required')
 
                                 # 尝试通过 wait-for-secrets 自动获取 OTP
                                 otp_code = None
@@ -191,12 +220,16 @@ class GitHubSignIn:
                                     # 自动填充 OTP
                                     print(f"✅ {self.account_name}: Auto-filling OTP code")
                                     await otp_input.fill(otp_code)
+                                    await self._save_page_content_to_file(page, 'opt_filled')
+                                    
                                     # 提交表单并等待导航
                                     submit_btn = await page.query_selector('button[type="submit"]')
                                     if submit_btn:
                                         try:
                                             # 等待点击后的导航完成
                                             await submit_btn.click()
+                                            
+                                            await self._save_page_content_to_file(page, 'opt_submitted')
                                             # 等待页面跳转完成
                                             await page.wait_for_url(
                                                 lambda url: "sessions/verified-device" not in url,
@@ -206,26 +239,7 @@ class GitHubSignIn:
                                         except Exception as nav_err:
                                             print(f"⚠️ {self.account_name}: Navigation after OTP: {nav_err}")
 
-                                            # 保存页面 HTML 到日志文件
-                                            try:
-                                                logs_dir = "logs"
-                                                os.makedirs(logs_dir, exist_ok=True)
-
-                                                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                                                safe_account_name = "".join(
-                                                    c if c.isalnum() else "_" for c in self.account_name
-                                                )
-                                                filename = f"{safe_account_name}_{timestamp}_github_otp_error.html"
-                                                filepath = os.path.join(logs_dir, filename)
-
-                                                html_content = await page.content()
-                                                with open(filepath, "w", encoding="utf-8") as f:
-                                                    f.write(html_content)
-
-                                                print(f"📄 {self.account_name}: Page HTML saved to {filepath}")
-                                            except Exception as save_err:
-                                                print(f"⚠️ {self.account_name}: Failed to save HTML: {save_err}")
-
+                                            await self._take_screenshot(page, 'opt_nav_error')
                                             # 即使导航出错也继续，因为可能已经成功
                                             await page.wait_for_timeout(3000)
                                 else:
