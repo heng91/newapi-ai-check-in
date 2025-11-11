@@ -89,9 +89,14 @@ class GitHubSignIn:
             humanize=True,
             locale="en-US",
         ) as browser:
-            if os.path.exists(cache_file_path):
-                print(f"ℹ️ {self.account_name}: Found cache file")
-            context = await browser.new_context(storage_state=cache_file_path)
+            # 只有在缓存文件存在时才加载 storage_state
+            storage_state = cache_file_path if os.path.exists(cache_file_path) else None
+            if storage_state:
+                print(f"ℹ️ {self.account_name}: Found cache file, loading storage state")
+            else:
+                print(f"ℹ️ {self.account_name}: No cache file found, starting fresh")
+
+            context = await browser.new_context(storage_state=storage_state)
             
             # 设置从 auth_state 获取的 session cookies 到页面上下文
             if auth_cookies:
