@@ -233,10 +233,11 @@ class CheckIn:
             f"ℹ️ {self.account_name}: Starting browser to get WAF cookies (using proxy: {'true' if self.camoufox_proxy_config else 'false'})"
         )
 
-        with tempfile.TemporaryDirectory(prefix=f"camoufox_{self.account_name}_waf_") as user_data_dir:
+        with tempfile.TemporaryDirectory(prefix=f"camoufox_{self.account_name}_waf_") as tmp_dir:
+            print(f"ℹ️ {self.account_name}: Using temporary directory: {tmp_dir}")
             async with AsyncCamoufox(
                 persistent_context=True,
-                user_data_dir=user_data_dir,
+                user_data_dir=tmp_dir,
                 headless=False,
                 humanize=True,
                 locale="en-US",
@@ -295,10 +296,11 @@ class CheckIn:
             f"ℹ️ {self.account_name}: Starting browser to get Aliyun captcha cookies (using proxy: {'true' if self.camoufox_proxy_config else 'false'})"
         )
 
-        with tempfile.TemporaryDirectory(prefix=f"camoufox_{self.account_name}_aliyun_captcha_") as user_data_dir:
+        with tempfile.TemporaryDirectory(prefix=f"camoufox_{self.account_name}_aliyun_captcha_") as tmp_dir:
+            print(f"ℹ️ {self.account_name}: Using temporary directory: {tmp_dir}")
             async with AsyncCamoufox(
                 persistent_context=True,
-                user_data_dir=user_data_dir,
+                user_data_dir=tmp_dir,
                 headless=False,
                 humanize=True,
                 locale="en-US",
@@ -464,9 +466,10 @@ class CheckIn:
             f"ℹ️ {self.account_name}: Starting browser to get status (using proxy: {'true' if self.camoufox_proxy_config else 'false'})"
         )
 
-        with tempfile.TemporaryDirectory(prefix=f"camoufox_{self.account_name}_status_") as user_data_dir:
+        with tempfile.TemporaryDirectory(prefix=f"camoufox_{self.account_name}_status_") as tmp_dir:
+            print(f"ℹ️ {self.account_name}: Using temporary directory: {tmp_dir}")
             async with AsyncCamoufox(
-                user_data_dir=user_data_dir,
+                user_data_dir=tmp_dir,
                 persistent_context=True,
                 headless=False,
                 humanize=True,
@@ -599,9 +602,10 @@ class CheckIn:
             f"ℹ️ {self.account_name}: Starting browser to get auth state (using proxy: {'true' if self.camoufox_proxy_config else 'false'})"
         )
 
-        with tempfile.TemporaryDirectory(prefix=f"camoufox_{self.account_name}_auth_") as user_data_dir:
+        with tempfile.TemporaryDirectory(prefix=f"camoufox_{self.account_name}_auth_") as tmp_dir:
+            print(f"ℹ️ {self.account_name}: Using temporary directory: {tmp_dir}")
             async with AsyncCamoufox(
-                user_data_dir=user_data_dir,
+                user_data_dir=tmp_dir,
                 persistent_context=True,
                 headless=False,
                 humanize=True,
@@ -756,9 +760,10 @@ class CheckIn:
             f"ℹ️ {self.account_name}: Starting browser to get user info (using proxy: {'true' if self.camoufox_proxy_config else 'false'})"
         )
 
-        with tempfile.TemporaryDirectory(prefix=f"camoufox_{self.account_name}_user_info_") as user_data_dir:
+        with tempfile.TemporaryDirectory(prefix=f"camoufox_{self.account_name}_user_info_") as tmp_dir:
+            print(f"ℹ️ {self.account_name}: Using temporary directory: {tmp_dir}")
             async with AsyncCamoufox(
-                user_data_dir=user_data_dir,
+                user_data_dir=tmp_dir,
                 persistent_context=True,
                 headless=False,
                 humanize=True,
