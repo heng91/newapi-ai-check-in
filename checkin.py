@@ -34,6 +34,7 @@ class CheckIn:
                 proxy_config: 全局代理配置(可选)
         """
         self.account_name = account_name
+        self.safe_account_name = "".join(c if c.isalnum() else "_" for c in account_name)
         self.account_config = account_config
         self.provider_config = provider_config
 
@@ -104,7 +105,6 @@ class CheckIn:
             print(f"❌ {self.account_name}: Failed to parse JSON response: {e}")
 
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            safe_account_name = "".join(c if c.isalnum() else "_" for c in self.account_name)
             safe_context = "".join(c if c.isalnum() else "_" for c in context)
 
             content_type = response.headers.get("content-type", "").lower()
@@ -112,7 +112,7 @@ class CheckIn:
             # 检查是否是 HTML 响应
             if "text/html" in content_type or "text/plain" in content_type:
                 # 保存 HTML 内容到文件
-                filename = f"{safe_account_name}_{timestamp}_{safe_context}.html"
+                filename = f"{self.safe_account_name}_{timestamp}_{safe_context}.html"
                 filepath = os.path.join(logs_dir, filename)
 
                 with open(filepath, "w", encoding="utf-8") as f:
@@ -121,7 +121,7 @@ class CheckIn:
                 print(f"⚠️ {self.account_name}: Received HTML response, saved to: {filepath}")
             else:
                 # 即使不是 HTML，如果 JSON 解析失败，也保存原始内容
-                filename = f"{safe_account_name}_{timestamp}_{safe_context}_invalid.txt"
+                filename = f"{self.safe_account_name}_{timestamp}_{safe_context}_invalid.txt"
                 filepath = os.path.join(logs_dir, filename)
 
                 with open(filepath, "w", encoding="utf-8") as f:
@@ -147,9 +147,8 @@ class CheckIn:
 
             # 生成文件名: 账号名_时间戳_原因.png
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            safe_account_name = "".join(c if c.isalnum() else "_" for c in self.account_name)
             safe_reason = "".join(c if c.isalnum() else "_" for c in reason)
-            filename = f"{safe_account_name}_{timestamp}_{safe_reason}.png"
+            filename = f"{self.safe_account_name}_{timestamp}_{safe_reason}.png"
             filepath = os.path.join(screenshots_dir, filename)
 
             await page.screenshot(path=filepath, full_page=True)
@@ -233,7 +232,7 @@ class CheckIn:
             f"ℹ️ {self.account_name}: Starting browser to get WAF cookies (using proxy: {'true' if self.camoufox_proxy_config else 'false'})"
         )
 
-        with tempfile.TemporaryDirectory(prefix=f"camoufox_{self.account_name}_waf_") as tmp_dir:
+        with tempfile.TemporaryDirectory(prefix=f"camoufox_{self.safe_account_name}_waf_") as tmp_dir:
             print(f"ℹ️ {self.account_name}: Using temporary directory: {tmp_dir}")
             async with AsyncCamoufox(
                 persistent_context=True,
@@ -296,7 +295,7 @@ class CheckIn:
             f"ℹ️ {self.account_name}: Starting browser to get Aliyun captcha cookies (using proxy: {'true' if self.camoufox_proxy_config else 'false'})"
         )
 
-        with tempfile.TemporaryDirectory(prefix=f"camoufox_{self.account_name}_aliyun_captcha_") as tmp_dir:
+        with tempfile.TemporaryDirectory(prefix=f"camoufox_{self.safe_account_name}_aliyun_captcha_") as tmp_dir:
             print(f"ℹ️ {self.account_name}: Using temporary directory: {tmp_dir}")
             async with AsyncCamoufox(
                 persistent_context=True,
@@ -466,7 +465,7 @@ class CheckIn:
             f"ℹ️ {self.account_name}: Starting browser to get status (using proxy: {'true' if self.camoufox_proxy_config else 'false'})"
         )
 
-        with tempfile.TemporaryDirectory(prefix=f"camoufox_{self.account_name}_status_") as tmp_dir:
+        with tempfile.TemporaryDirectory(prefix=f"camoufox_{self.safe_account_name}_status_") as tmp_dir:
             print(f"ℹ️ {self.account_name}: Using temporary directory: {tmp_dir}")
             async with AsyncCamoufox(
                 user_data_dir=tmp_dir,
@@ -602,7 +601,7 @@ class CheckIn:
             f"ℹ️ {self.account_name}: Starting browser to get auth state (using proxy: {'true' if self.camoufox_proxy_config else 'false'})"
         )
 
-        with tempfile.TemporaryDirectory(prefix=f"camoufox_{self.account_name}_auth_") as tmp_dir:
+        with tempfile.TemporaryDirectory(prefix=f"camoufox_{self.safe_account_name}_auth_") as tmp_dir:
             print(f"ℹ️ {self.account_name}: Using temporary directory: {tmp_dir}")
             async with AsyncCamoufox(
                 user_data_dir=tmp_dir,
@@ -760,7 +759,7 @@ class CheckIn:
             f"ℹ️ {self.account_name}: Starting browser to get user info (using proxy: {'true' if self.camoufox_proxy_config else 'false'})"
         )
 
-        with tempfile.TemporaryDirectory(prefix=f"camoufox_{self.account_name}_user_info_") as tmp_dir:
+        with tempfile.TemporaryDirectory(prefix=f"camoufox_{self.safe_account_name}_user_info_") as tmp_dir:
             print(f"ℹ️ {self.account_name}: Using temporary directory: {tmp_dir}")
             async with AsyncCamoufox(
                 user_data_dir=tmp_dir,
