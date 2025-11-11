@@ -103,6 +103,21 @@ jobs:
         FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
         WEIXIN_WEBHOOK: ${{ secrets.WEIXIN_WEBHOOK }}
       run: |
+        # 列出 storage-states 目录文件
+        if (Test-Path "storage-states") {
+          echo "📁 storage-states 目录内容:"
+          echo "绝对路径: $(Resolve-Path storage-states)"
+          echo ""
+          echo "所有文件:"
+          Get-ChildItem -Path storage-states -File | ForEach-Object { echo "  - $($_.Name)" }
+          echo ""
+          echo "详细信息:"
+          Get-ChildItem -Path storage-states -File | Format-Table Name, Length, LastWriteTime -AutoSize
+          echo "文件总数: $((Get-ChildItem -Path storage-states -File).Count)"
+        } else {
+          echo "⚠️ storage-states 目录不存在"
+        }
+        # 执行签到
         uv run python -u main.py
 
     - name: 保存日志
