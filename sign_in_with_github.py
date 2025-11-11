@@ -116,7 +116,7 @@ class GitHubSignIn:
             # 只有在缓存文件存在时才加载 storage_state
             storage_state = cache_file_path if os.path.exists(cache_file_path) else None
             if storage_state:
-                print(f"ℹ️ {self.account_name}: Found cache file, loading storage state")
+                print(f"ℹ️ {self.account_name}: Found cache file, restore state from {storage_state}")
             else:
                 print(f"ℹ️ {self.account_name}: No cache file found, starting fresh")
 
@@ -172,7 +172,6 @@ class GitHubSignIn:
                         await page.click('input[type="submit"][value="Sign in"]')
                         await page.wait_for_timeout(10000)
 
-                        print(f"ℹ️ {self.account_name}: sign-in submitted {page.url}")
                         await self._save_page_content_to_file(page, "sign_in_result")
 
                         # 处理两步验证（如果需要）
@@ -181,6 +180,10 @@ class GitHubSignIn:
                             otp_input = await page.query_selector('input[name="otp"]')
                             if otp_input:
                                 print(f"ℹ️ {self.account_name}: Two-factor authentication required")
+                                                                                                  
+                                # 记录当前URL用于检测跳转
+                                current_url = page.url
+                                print(f"ℹ️ {self.account_name}: Current page url is {current_url}")
 
                                 # 尝试通过 wait-for-secrets 自动获取 OTP
                                 otp_code = None
@@ -210,11 +213,7 @@ class GitHubSignIn:
 
                                 if otp_code:
                                     # 自动填充 OTP
-                                    print(f"✅ {self.account_name}: Auto-filling OTP code")
-                                    
-                                    # 记录当前URL用于检测跳转
-                                    current_url = page.url
-                                    
+                                    print(f"✅ {self.account_name}: Auto-filling OTP code")                                    
                                     await otp_input.fill(otp_code)
                                     await self._save_page_content_to_file(page, "otp_filled")
 

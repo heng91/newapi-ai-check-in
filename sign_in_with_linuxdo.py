@@ -115,7 +115,7 @@ class LinuxDoSignIn:
             # 只有在缓存文件存在时才加载 storage_state
             storage_state = cache_file_path if os.path.exists(cache_file_path) else None
             if storage_state:
-                print(f"ℹ️ {self.account_name}: Found cache file, loading storage state")
+                print(f"ℹ️ {self.account_name}: Found cache file, restore state from {storage_state}")
             else:
                 print(f"ℹ️ {self.account_name}: No cache file found, starting fresh")
 
@@ -167,14 +167,11 @@ class LinuxDoSignIn:
                         await page.click("#login-button")
                         await page.wait_for_timeout(10000)
 
-                        print(f"ℹ️ {self.account_name}: sign-in submitted {page.url}")
                         await self._save_page_content_to_file(page, "sign_in_result")
 
                         try:
-                            # 等待可能的 Cloudflare 验证完成
-                            # Camoufox 应该会自动处理，我们只需要等待
-
                             current_url = page.url
+                            print(f"ℹ️ {self.account_name}: Current page url is {current_url}")
                             if "linux.do/challenge" in current_url:
                                 print(
                                     f"⚠️ {self.account_name}: Cloudflare challenge detected, "
