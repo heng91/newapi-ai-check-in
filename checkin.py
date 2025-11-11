@@ -1018,7 +1018,6 @@ class CheckIn:
             github = GitHubSignIn(
                 account_name=self.account_name,
                 provider_config=self.provider_config,
-                proxy_config=self.camoufox_proxy_config,
                 username=username,
                 password=password,
             )
@@ -1031,13 +1030,55 @@ class CheckIn:
             )
 
             # 检查是否成功获取 cookies 和 api_user
-            if success and result_data.get("cookies") and result_data.get("api_user"):
+            if success and "cookies" in result_data and "api_user" in result_data:
                 # 统一调用 check_in_with_cookies 执行签到
                 user_cookies = result_data["cookies"]
                 api_user = result_data["api_user"]
 
                 merged_cookies = {**waf_cookies, **user_cookies}
                 return await self.check_in_with_cookies(merged_cookies, api_user, needs_check_in=False)
+            elif success and "code" in result_data and "state" in result_data:
+                # 收到 OAuth code，通过 HTTP 调用回调接口获取 api_user
+                print(f"ℹ️ {self.account_name}: Received OAuth code, calling callback API")
+
+                callback_url = httpx.URL(self.provider_config.get_github_auth_url()).copy_with(params=result_data)
+                print(f"ℹ️ {self.account_name}: Callback URL: {callback_url}")
+                try:
+                    client.cookies.update(auth_state_result.get("cookies", []))
+                    response = client.get(callback_url, headers=headers, timeout=30)
+
+                    if response.status_code == 200:
+                        json_data = self._check_and_handle_response(response, "github_oauth_callback")
+                        if json_data and json_data.get("success"):
+                            user_data = json_data.get("data", {})
+                            api_user = user_data.get("id")
+
+                            if api_user:
+                                print(f"✅ {self.account_name}: Got api_user from callback: {api_user}")
+
+                                # 提取 cookies
+                                user_cookies = {}
+                                for cookie in response.cookies.jar:
+                                    user_cookies[cookie.name] = cookie.value
+
+                                print(f"ℹ️ {self.account_name}: Extracted {len(user_cookies)} user cookies: {list(user_cookies.keys())}")
+                                merged_cookies = {**waf_cookies, **user_cookies}
+                                return await self.check_in_with_cookies(
+                                    merged_cookies, api_user, needs_check_in=False
+                                )
+                            else:
+                                print(f"❌ {self.account_name}: No user ID in callback response")
+                                return False, {"error": "No user ID in OAuth callback response"}
+                        else:
+                            error_msg = json_data.get("message", "Unknown error") if json_data else "Invalid response"
+                            print(f"❌ {self.account_name}: OAuth callback failed: {error_msg}")
+                            return False, {"error": f"OAuth callback failed: {error_msg}"}
+                    else:
+                        print(f"❌ {self.account_name}: OAuth callback HTTP {response.status_code}")
+                        return False, {"error": f"OAuth callback HTTP {response.status_code}"}
+                except Exception as callback_err:
+                    print(f"❌ {self.account_name}: Error calling OAuth callback: {callback_err}")
+                    return False, {"error": f"OAuth callback error: {callback_err}"}
             else:
                 # 返回错误信息
                 return False, result_data
@@ -1121,7 +1162,6 @@ class CheckIn:
             linuxdo = LinuxDoSignIn(
                 account_name=self.account_name,
                 provider_config=self.provider_config,
-                proxy_config=self.camoufox_proxy_config,
                 username=username,
                 password=password,
             )
@@ -1134,13 +1174,55 @@ class CheckIn:
             )
 
             # 检查是否成功获取 cookies 和 api_user
-            if success and result_data.get("cookies") and result_data.get("api_user"):
+            if success and "cookies" in result_data and "api_user" in result_data:
                 # 统一调用 check_in_with_cookies 执行签到
                 user_cookies = result_data["cookies"]
                 api_user = result_data["api_user"]
 
                 merged_cookies = {**waf_cookies, **user_cookies}
                 return await self.check_in_with_cookies(merged_cookies, api_user, needs_check_in=False)
+            elif success and "code" in result_data and "state" in result_data:
+                # 收到 OAuth code，通过 HTTP 调用回调接口获取 api_user
+                print(f"ℹ️ {self.account_name}: Received OAuth code, calling callback API")
+
+                callback_url = httpx.URL(self.provider_config.get_linuxdo_auth_url()).copy_with(params=result_data)
+                print(f"ℹ️ {self.account_name}: Callback URL: {callback_url}")
+                try:
+                    client.cookies.update(auth_state_result.get("cookies", []))
+                    response = client.get(callback_url, headers=headers, timeout=30)
+
+                    if response.status_code == 200:
+                        json_data = self._check_and_handle_response(response, "linuxdo_oauth_callback")
+                        if json_data and json_data.get("success"):
+                            user_data = json_data.get("data", {})
+                            api_user = user_data.get("id")
+
+                            if api_user:
+                                print(f"✅ {self.account_name}: Got api_user from callback: {api_user}")
+
+                                # 提取 cookies
+                                user_cookies = {}
+                                for cookie in response.cookies.jar:
+                                    user_cookies[cookie.name] = cookie.value
+
+                                print(f"ℹ️ {self.account_name}: Extracted {len(user_cookies)} user cookies: {list(user_cookies.keys())}")
+                                merged_cookies = {**waf_cookies, **user_cookies}
+                                return await self.check_in_with_cookies(
+                                    merged_cookies, api_user, needs_check_in=False
+                                )
+                            else:
+                                print(f"❌ {self.account_name}: No user ID in callback response")
+                                return False, {"error": "No user ID in OAuth callback response"}
+                        else:
+                            error_msg = json_data.get("message", "Unknown error") if json_data else "Invalid response"
+                            print(f"❌ {self.account_name}: OAuth callback failed: {error_msg}")
+                            return False, {"error": f"OAuth callback failed: {error_msg}"}
+                    else:
+                        print(f"❌ {self.account_name}: OAuth callback HTTP {response.status_code}")
+                        return False, {"error": f"OAuth callback HTTP {response.status_code}"}
+                except Exception as callback_err:
+                    print(f"❌ {self.account_name}: Error calling OAuth callback: {callback_err}")
+                    return False, {"error": f"OAuth callback error: {callback_err}"}
             else:
                 # 返回错误信息
                 return False, result_data

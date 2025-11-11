@@ -22,7 +22,9 @@ class ProviderConfig:
     user_info_path: str = "/api/user/self"
     api_user_key: str = "new-api-user"
     github_client_id: str | None = None
+    github_auth_path: str = "/api/oauth/github",
     linuxdo_client_id: str | None = None
+    linuxdo_auth_path: str = "/api/oauth/lunuxdo",
     aliyun_captcha: bool = False
     bypass_method: Literal["waf_cookies"] | None = None
 
@@ -38,11 +40,15 @@ class ProviderConfig:
             name=name,
             origin=data["origin"],
             login_path=data.get("login_path", "/login"),
+            status_path=data.get("status_path", "/api/status"),
+            auth_state_path=data.get("auth_state_path", "api/oauth/state"),
             sign_in_path=data.get("sign_in_path", "/api/user/sign_in"),
             user_info_path=data.get("user_info_path", "/api/user/self"),
             api_user_key=data.get("api_user_key", "new-api-user"),
             github_client_id=data.get("github_client_id"),
+            github_auth_path=data.get("github_auth_path", "/api/oauth/github"),
             linuxdo_client_id=data.get("linuxdo_client_id"),
+            linuxdo_auth_path=data.get("github_auth_path", "/api/oauth/linuxdo"),
             aliyun_captcha=data.get("aliyun_captcha", False),
             bypass_method=data.get("bypass_method"),
         )
@@ -77,6 +83,14 @@ class ProviderConfig:
         """获取用户信息 URL"""
         return f"{self.origin}{self.user_info_path}"
 
+    def get_github_auth_url(self) -> str:
+        """获取 GitHub 认证 URL"""
+        return f"{self.origin}{self.github_auth_path}"
+    
+    def get_linuxdo_auth_url(self) -> str:
+        """获取 LinuxDo 认证 URL"""
+        return f"{self.origin}{self.linuxdo_auth_path}"
+
 
 @dataclass
 class AppConfig:
@@ -98,7 +112,9 @@ class AppConfig:
                 user_info_path="/api/user/self",
                 api_user_key="new-api-user",
                 github_client_id="Ov23liOwlnIiYoF3bUqw",
-                linuxdo_client_id="8w2uZtoWH9AUXrZr1qeCEEmvXLafea3c",                
+                github_auth_path="/api/oauth/github",
+                linuxdo_client_id="8w2uZtoWH9AUXrZr1qeCEEmvXLafea3c",
+                linuxdo_auth_path="/api/oauth/linuxdo",
                 aliyun_captcha=False,
                 bypass_method="waf_cookies",
             ),
@@ -112,7 +128,9 @@ class AppConfig:
                 user_info_path="/api/user/self",
                 api_user_key="new-api-user",
                 github_client_id="Ov23lidtiR4LeVZvVRNL",
+                github_auth_path="/api/oauth/github",
                 linuxdo_client_id="KZUecGfhhDZMVnv8UtEdhOhf9sNOhqVX",
+                linuxdo_auth_path="/api/oauth/linuxdo",
                 aliyun_captcha=True,
                 bypass_method=None,
             ),
