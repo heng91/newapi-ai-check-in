@@ -6,8 +6,8 @@
 import json
 import os
 import tempfile
-from urllib.parse import urlparse
 from datetime import datetime
+from urllib.parse import urlparse, parse_qs
 from camoufox.async_api import AsyncCamoufox
 from utils.browser_utils import filter_cookies
 from utils.config import ProviderConfig
@@ -23,7 +23,6 @@ class GitHubSignIn:
         provider_config: ProviderConfig,
         username: str,
         password: str,
-        proxy_config: dict | None,
     ):
         """初始化
 
@@ -38,7 +37,6 @@ class GitHubSignIn:
         self.provider_config = provider_config
         self.username = username
         self.password = password
-        self.proxy_config = proxy_config
 
     async def _take_screenshot(self, page, reason: str) -> None:
         """截取当前页面的屏幕截图
@@ -83,17 +81,16 @@ class GitHubSignIn:
             (成功标志, 结果字典)
         """
         print(f"ℹ️ {self.account_name}: Executing sign-in with GitHub account")
-        print(f"ℹ️ {self.account_name}: Using client_id: {client_id}, auth_state: {auth_state}, proxy: {'true' if self.proxy_config else 'false'}")
+        print(f"ℹ️ {self.account_name}: Using client_id: {client_id}, auth_state: {auth_state}")
 
         with tempfile.TemporaryDirectory(prefix="camoufox_github_sign_in_") as user_data_dir:
+            print(f"ℹ️ {self.account_name}: Using user_data_dir: {user_data_dir}")
             async with AsyncCamoufox(
                 persistent_context=True,
                 user_data_dir=user_data_dir,
                 headless=False,
                 humanize=True,
                 locale="en-US",
-                geoip=True if self.proxy_config else False,
-                proxy=self.proxy_config,
             ) as browser:
                 # 检查缓存文件是否存在，从缓存文件中恢复会话 cookies
                 if os.path.exists(cache_file_path):
@@ -283,7 +280,7 @@ class GitHubSignIn:
                         api_user = None
                         try:
                             try:
-                                await page.wait_for_function('localStorage.getItem("user") !== null', timeout=5000)
+                                await page.wait_for_function('localStorage.getItem("user") !== null', timeout=10000)
                             except Exception:
                                 await page.wait_for_timeout(5000)
 
@@ -309,9 +306,21 @@ class GitHubSignIn:
 
                             return True, {"cookies": user_cookies, "api_user": api_user}
                         else:
-                            print(f"❌ {self.account_name}: OAuth failed")
+                            print(f"⚠️ {self.account_name}: OAuth callback received but no user ID found")
                             await self._take_screenshot(page, "github_oauth_failed_no_user_id")
-                            return False, {"error": "GitHub OAuth failed - no user ID found"}
+                            
+                            parsed_url = urlparse(page.url)
+                            query_params = parse_qs(parsed_url.query)
+
+                            # 如果 query 中包含 code，说明 OAuth 回调成功
+                            if "code" in query_params:
+                                print(f"✅ {self.account_name}: OAuth code received: {query_params.get('code')}")
+                                return True, query_params
+                            else:
+                                print(f"❌ {self.account_name}: OAuth failed, no code in callback")
+                                return False, {
+                                    "error": "GitHub OAuth failed - no code in callback",
+                                }
 
                     except Exception as e:
                         print(
