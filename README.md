@@ -32,8 +32,11 @@
    - Value: 你的多账号配置数据
 
 ### 3. 多账号配置格式
+> 如果未提供 `name` 字段，会使用 `Account 1`、`Account 2` 等默认名称。  
+> 配置中 `cookies`、`github`、`linux.do` 必须至少配置 1 个。   
+> 使用 `cookies` 设置时，`api_user` 字段必填。
 
-支持单个与多个账号配置，可选 `name` 字段用于自定义账号显示名称：
+示例：
 
 ```json
 [
@@ -46,11 +49,18 @@
       "github": {
         "username": "myuser",
         "password": "mypass",
+      },
+      "linux.do": {
+        "username": "myuser",
+        "password": "mypass",
       }
     },
     {
       "name": "另一个账号",
       "provider": "agentrouter",
+      "proxy": {
+        "server": "http://username:password@proxy.example.com:8080"
+      }
       "linux.do": {
         "username": "user2",
         "password": "pass2",
@@ -59,10 +69,11 @@
   ]
 ```
 
-**字段说明**：
+#### 字段说明：
 
 - `name` (可选)：自定义账号显示名称，用于通知和日志中标识账号
 - `provider` (可选)：供应商，内置 `anyrouter`、`agentrouter`, 默认使用 `anyrouter`
+- `proxy` (可选)：单个账号代理配置，支持 `http`、`socks5` 代理
 - `cookies`(可选)：用于身份验证的 cookies 数据
 - `api_user`(cookies 设置时必需)：用于请求头的 new-api-user 参数
 - `linux.do`(可选)：用于登录身份验证
@@ -72,9 +83,36 @@
   - `username`: 用户名
   - `password`: 密码
 
-> 如果未提供 `name` 字段，会使用 `Account 1`、`Account 2` 等默认名称。  
-> 配置中 `cookies`、`github`、`linux.do` 必须至少配置 1 个。  
-> 可通过`PROVIDERS`环境添加自定义供应商
+#### 供应商配置：
+
+在仓库的 Settings -> Environments -> production -> Environment secrets 中添加：
+   - Name: `PROVIDERS`
+   - Value: 供应商
+
+
+#### 代理配置
+> 应用到所有的账号，如果单个账号需要使用代理，请在单个账号配置中添加 `proxy` 字段。  
+> 打开 [webshare](https://dashboard.webshare.io/) 注册账号，获取免费代理
+
+在仓库的 Settings -> Environments -> production -> Environment secrets 中添加：
+   - Name: `PROXY`
+   - Value: 代理服务器地址
+
+
+```bash
+{
+  "server": "http://username:password@proxy.example.com:8080"
+}
+
+或者
+
+{
+  "server": "http://proxy.example.com:8080",
+  "username": "username",
+  "password": "password"
+}
+```
+
 
 #### 如何获取 cookies 与 api_user 的值。
 
@@ -119,7 +157,6 @@
 - 可以在 Actions 页面查看详细的运行日志
 - 支持部分账号失败，只要有账号成功签到，整个任务就不会失败
 - `GitHub` 新设备 OTP 验证，注意日志中的链接或配置了通知注意接收的链接，访问链接进行输入验证码
-- `Cloudflare` 验证需要使用 [Camoufox](https://github.com/daijro/camoufox?tab=readme-ov-file#tests) 执行
 
 ## 开启通知
 
