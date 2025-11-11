@@ -205,6 +205,27 @@ class GitHubSignIn:
                                             print(f"✅ {self.account_name}: OTP submitted successfully")
                                         except Exception as nav_err:
                                             print(f"⚠️ {self.account_name}: Navigation after OTP: {nav_err}")
+
+                                            # 保存页面 HTML 到日志文件
+                                            try:
+                                                logs_dir = "logs"
+                                                os.makedirs(logs_dir, exist_ok=True)
+
+                                                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                                                safe_account_name = "".join(
+                                                    c if c.isalnum() else "_" for c in self.account_name
+                                                )
+                                                filename = f"{safe_account_name}_{timestamp}_github_otp_error.html"
+                                                filepath = os.path.join(logs_dir, filename)
+
+                                                html_content = await page.content()
+                                                with open(filepath, "w", encoding="utf-8") as f:
+                                                    f.write(html_content)
+
+                                                print(f"📄 {self.account_name}: Page HTML saved to {filepath}")
+                                            except Exception as save_err:
+                                                print(f"⚠️ {self.account_name}: Failed to save HTML: {save_err}")
+
                                             # 即使导航出错也继续，因为可能已经成功
                                             await page.wait_for_timeout(3000)
                                 else:
