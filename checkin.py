@@ -1044,7 +1044,11 @@ class CheckIn:
                 callback_url = httpx.URL(self.provider_config.get_github_auth_url()).copy_with(params=result_data)
                 print(f"ℹ️ {self.account_name}: Callback URL: {callback_url}")
                 try:
-                    client.cookies.update(auth_state_result.get("cookies", []))
+                    # 将 Camoufox 格式的 cookies 转换为 httpx 格式
+                    auth_cookies_list = auth_state_result.get("cookies", [])
+                    for cookie_dict in auth_cookies_list:
+                        client.cookies.set(cookie_dict["name"], cookie_dict["value"])
+
                     response = client.get(callback_url, headers=headers, timeout=30)
 
                     if response.status_code == 200:
@@ -1188,7 +1192,11 @@ class CheckIn:
                 callback_url = httpx.URL(self.provider_config.get_linuxdo_auth_url()).copy_with(params=result_data)
                 print(f"ℹ️ {self.account_name}: Callback URL: {callback_url}")
                 try:
-                    client.cookies.update(auth_state_result.get("cookies", []))
+                    # 将 Camoufox 格式的 cookies 转换为 httpx 格式
+                    auth_cookies_list = auth_state_result.get("cookies", [])
+                    for cookie_dict in auth_cookies_list:
+                        client.cookies.set(cookie_dict["name"], cookie_dict["value"])
+
                     response = client.get(callback_url, headers=headers, timeout=30)
 
                     if response.status_code == 200:
