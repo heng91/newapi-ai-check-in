@@ -3,11 +3,8 @@
 浏览器自动化相关的公共工具函数
 """
 
-import asyncio
 import random
 from urllib.parse import urlparse
-
-from playwright.async_api import Page
 
 
 def parse_cookies(cookies_data) -> dict:
@@ -38,7 +35,7 @@ def filter_cookies(cookies: list[dict], origin: str) -> dict:
     """根据 origin 过滤 cookies，只保留匹配域名的 cookies
 
     Args:
-        cookies: Playwright cookies 列表，每个元素是包含 name, value, domain 等的字典
+        cookies: Camoufox cookies 列表，每个元素是包含 name, value, domain 等的字典
         origin: Provider 的 origin URL (例如: https://api.example.com)
 
     Returns:
@@ -72,10 +69,10 @@ def filter_cookies(cookies: list[dict], origin: str) -> dict:
                 or normalized_cookie_domain.endswith("." + normalized_provider_domain)
             ):
                 user_cookies[cookie_name] = cookie_value
-                print(f"  ✅ Matched cookie: {cookie_name} (domain: {cookie_domain})")
+                print(f"  🔵 Matched cookie: {cookie_name} (domain: {cookie_domain})")
             else:
                 filtered_count += 1
-                print(f"  ❌ Filtered cookie: {cookie_name} (domain: {cookie_domain})")
+                print(f"  🔴 Filtered cookie: {cookie_name} (domain: {cookie_domain})")
 
     print(
         f"🔍 Cookie filtering result: "
@@ -84,6 +81,7 @@ def filter_cookies(cookies: list[dict], origin: str) -> dict:
     )
 
     return user_cookies
+
 
 def get_random_user_agent() -> str:
     """获取随机的现代浏览器 User Agent 字符串
@@ -102,43 +100,3 @@ def get_random_user_agent() -> str:
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:134.0) " "Gecko/20100101 Firefox/134.0",
     ]
     return random.choice(user_agents)
-
-
-async def human_behavior(page: Page) -> None:
-    """模拟人类浏览器操作行为
-
-    包括随机鼠标移动、滚动和点击等操作，用于绕过自动化检测
-
-    Args:
-        page: Playwright Page 对象
-    """
-    # 随机鼠标移动
-    for _ in range(5):
-        x = random.randint(100, 800)
-        y = random.randint(100, 600)
-        await page.mouse.move(x, y, steps=random.randint(5, 25))
-        await asyncio.sleep(random.uniform(0.2, 0.6))
-
-    # 分段向下滚动
-    for _ in range(3):
-        await page.evaluate(
-            """() => {
-            window.scrollBy(0, window.innerHeight * 0.8);
-        }"""
-        )
-        await asyncio.sleep(random.uniform(0.5, 1.2))
-
-    # 稍作停顿，然后向上滚动
-    await asyncio.sleep(random.uniform(0.5, 1.0))
-    await page.evaluate(
-        """() => {
-        window.scrollBy(0, -window.innerHeight * 0.5);
-    }"""
-    )
-    await asyncio.sleep(random.uniform(0.3, 0.8))
-
-    # 随机点击一个位置
-    bx = random.randint(50, 750)
-    by = random.randint(50, 550)
-    await page.mouse.click(bx, by)
-    await asyncio.sleep(random.uniform(1.0, 2.0))

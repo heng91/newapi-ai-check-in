@@ -47,28 +47,6 @@ jobs:
         uv sync
         echo "✅ 环境初始化完成"
 
-    - name: 获取 Playwright 版本
-      id: playwright-version
-      run: |
-        $version = uv run python -c "import importlib.metadata; print(importlib.metadata.version('playwright'))"
-        echo "version=$version" >> $env:GITHUB_OUTPUT
-        echo "Playwright version: $version"
-
-    - name: 缓存 Playwright 浏览器
-      uses: actions/cache@v4
-      id: playwright-cache
-      with:
-        path: ~\AppData\Local\ms-playwright
-        key: ${{ runner.os }}-playwright-${{ steps.playwright-version.outputs.version }}
-        restore-keys: |
-          ${{ runner.os }}-playwright-
-
-    - name: 安装 Playwright 浏览器
-      if: steps.playwright-cache.outputs.cache-hit != 'true'
-      run: |
-        echo "缓存未命中，开始安装 Playwright 浏览器..."
-        uv run playwright install chromium --with-deps
-
     - name: 获取 Camoufox 版本
       id: camoufox-version
       run: |
@@ -96,10 +74,10 @@ jobs:
       uses: actions/cache@v4
       with:
         path: |
-          caches
-        key: auth-caches-${{ github.sha }}
+          storage-states
+        key: storage-state-${{ github.sha }}
         restore-keys: |
-          auth-caches-
+          storage-state-
 
     - name: 恢复余额历史缓存
       uses: actions/cache@v4
@@ -114,6 +92,7 @@ jobs:
       env:
         ACCOUNTS: ${{ secrets.ACCOUNTS }}
         PROVIDERS: ${{ secrets.PROVIDERS }}
+        PROXY: ${{secrets.PROXY}}
         DINGDING_WEBHOOK: ${{ secrets.DINGDING_WEBHOOK }}
         EMAIL_USER: ${{ secrets.EMAIL_USER }}
         EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
@@ -124,7 +103,34 @@ jobs:
         FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
         WEIXIN_WEBHOOK: ${{ secrets.WEIXIN_WEBHOOK }}
       run: |
+        # 列出 storage-states 目录文件
+        if (Test-Path "storage-states") {
+          echo "📁 storage-states 目录内容:"
+          echo "绝对路径: $(Resolve-Path storage-states)"
+          echo ""
+          echo "所有文件:"
+          Get-ChildItem -Path storage-states -File | ForEach-Object { echo "  - $($_.Name)" }
+          echo ""
+          echo "详细信息:"
+          Get-ChildItem -Path storage-states -File | Format-Table Name, Length, LastWriteTime -AutoSize
+          echo "文件总数: $((Get-ChildItem -Path storage-states -File).Count)"
+        } else {
+          echo "⚠️ storage-states 目录不存在"
+        }
+        # 执行签到
         uv run python -u main.py
+
+    - name: 保存日志
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: artifacts-${{ github.run_number }}
+        path: |
+          logs/
+          screenshots/
+          storage-states/
+        if-no-files-found: ignore
+        retention-days: 7
 
     - name: 执行结果
       if: always()

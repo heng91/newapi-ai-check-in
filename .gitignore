@@ -4,5 +4,7 @@
 __pycache__
 .pytest_cache
 .ruff_cache
-caches
+screenshots
+storage-states
+logs
 balance_hash.txt

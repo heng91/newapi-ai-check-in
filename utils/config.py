@@ -21,6 +21,11 @@ class ProviderConfig:
     sign_in_path: str | None = "/api/user/sign_in"
     user_info_path: str = "/api/user/self"
     api_user_key: str = "new-api-user"
+    github_client_id: str | None = None
+    github_auth_path: str = "/api/oauth/github",
+    linuxdo_client_id: str | None = None
+    linuxdo_auth_path: str = "/api/oauth/lunuxdo",
+    aliyun_captcha: bool = False
     bypass_method: Literal["waf_cookies"] | None = None
 
     @classmethod
@@ -35,9 +40,16 @@ class ProviderConfig:
             name=name,
             origin=data["origin"],
             login_path=data.get("login_path", "/login"),
+            status_path=data.get("status_path", "/api/status"),
+            auth_state_path=data.get("auth_state_path", "api/oauth/state"),
             sign_in_path=data.get("sign_in_path", "/api/user/sign_in"),
             user_info_path=data.get("user_info_path", "/api/user/self"),
             api_user_key=data.get("api_user_key", "new-api-user"),
+            github_client_id=data.get("github_client_id"),
+            github_auth_path=data.get("github_auth_path", "/api/oauth/github"),
+            linuxdo_client_id=data.get("linuxdo_client_id"),
+            linuxdo_auth_path=data.get("github_auth_path", "/api/oauth/linuxdo"),
+            aliyun_captcha=data.get("aliyun_captcha", False),
             bypass_method=data.get("bypass_method"),
         )
 
@@ -47,25 +59,37 @@ class ProviderConfig:
 
     def needs_manual_check_in(self) -> bool:
         """判断是否需要手动调用签到接口"""
-        return self.bypass_method == "waf_cookies"
+        return self.sign_in_path is not None
 
     def get_login_url(self) -> str:
         """获取登录 URL"""
         return f"{self.origin}{self.login_path}"
+
     def get_status_url(self) -> str:
         """获取状态 URL"""
         return f"{self.origin}{self.status_path}"
+
     def get_auth_state_url(self) -> str:
         """获取认证状态 URL"""
         return f"{self.origin}{self.auth_state_path}"
+
     def get_sign_in_url(self) -> str | None:
         """获取签到 URL"""
         if self.sign_in_path:
             return f"{self.origin}{self.sign_in_path}"
         return None
+
     def get_user_info_url(self) -> str:
         """获取用户信息 URL"""
         return f"{self.origin}{self.user_info_path}"
+
+    def get_github_auth_url(self) -> str:
+        """获取 GitHub 认证 URL"""
+        return f"{self.origin}{self.github_auth_path}"
+    
+    def get_linuxdo_auth_url(self) -> str:
+        """获取 LinuxDo 认证 URL"""
+        return f"{self.origin}{self.linuxdo_auth_path}"
 
 
 @dataclass
@@ -87,6 +111,11 @@ class AppConfig:
                 sign_in_path="/api/user/sign_in",
                 user_info_path="/api/user/self",
                 api_user_key="new-api-user",
+                github_client_id="Ov23liOwlnIiYoF3bUqw",
+                github_auth_path="/api/oauth/github",
+                linuxdo_client_id="8w2uZtoWH9AUXrZr1qeCEEmvXLafea3c",
+                linuxdo_auth_path="/api/oauth/linuxdo",
+                aliyun_captcha=False,
                 bypass_method="waf_cookies",
             ),
             "agentrouter": ProviderConfig(
@@ -98,6 +127,11 @@ class AppConfig:
                 sign_in_path=None,  # 无需签到接口，查询用户信息时自动完成签到
                 user_info_path="/api/user/self",
                 api_user_key="new-api-user",
+                github_client_id="Ov23lidtiR4LeVZvVRNL",
+                github_auth_path="/api/oauth/github",
+                linuxdo_client_id="KZUecGfhhDZMVnv8UtEdhOhf9sNOhqVX",
+                linuxdo_auth_path="/api/oauth/linuxdo",
+                aliyun_captcha=True,
                 bypass_method=None,
             ),
         }
@@ -122,9 +156,7 @@ class AppConfig:
 
                 print(f"ℹ️ Loaded {len(providers_data)} custom provider(s) from PROVIDERS environment variable")
             except json.JSONDecodeError as e:
-                print(
-                    f"⚠️ Failed to parse PROVIDERS environment variable: {e}, using default configuration only"
-                )
+                print(f"⚠️ Failed to parse PROVIDERS environment variable: {e}, using default configuration only")
             except Exception as e:
                 print(f"⚠️ Error loading PROVIDERS: {e}, using default configuration only")
 
@@ -145,6 +177,7 @@ class AccountConfig:
     name: str | None = None
     linux_do: dict | None = None
     github: dict | None = None
+    proxy: dict | None = None
 
     @classmethod
     def from_dict(cls, data: dict, index: int) -> "AccountConfig":
@@ -156,6 +189,7 @@ class AccountConfig:
         cookies = data.get("cookies", "")
         linux_do = data.get("linux.do")
         github = data.get("github")
+        proxy = data.get("proxy")
 
         return cls(
             provider=provider,
@@ -163,7 +197,8 @@ class AccountConfig:
             cookies=cookies,
             api_user=data.get("api_user", ""),
             linux_do=linux_do,
-            github=github
+            github=github,
+            proxy=proxy,
         )
 
     def get_display_name(self, index: int = 0) -> str:
