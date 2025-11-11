@@ -102,7 +102,7 @@ class LinuxDoSignIn:
             (成功标志, 用户信息字典)
         """
         print(f"ℹ️ {self.account_name}: Executing sign-in with Linux.do")
-        print(f"ℹ️ {self.account_name}: Using client_id: {client_id}, auth_state: {auth_state}")
+        print(f"ℹ️ {self.account_name}: Using client_id: {client_id}, auth_state: {auth_state}, cache_file: {cache_file_path}")
 
         # 使用 Camoufox 启动浏览器
         async with AsyncCamoufox(
@@ -115,7 +115,7 @@ class LinuxDoSignIn:
             # 只有在缓存文件存在时才加载 storage_state
             storage_state = cache_file_path if os.path.exists(cache_file_path) else None
             if storage_state:
-                print(f"ℹ️ {self.account_name}: Found cache file, restore state from {storage_state}")
+                print(f"ℹ️ {self.account_name}: Found cache file, restore storage state")
             else:
                 print(f"ℹ️ {self.account_name}: No cache file found, starting fresh")
 
@@ -188,7 +188,7 @@ class LinuxDoSignIn:
 
                         # 保存新的会话状态
                         await context.storage_state(path=cache_file_path)
-                        print(f"✅ {self.account_name}: Session state saved to cache")
+                        print(f"✅ {self.account_name}: Storage state saved to cache file")
 
                     except Exception as e:
                         print(f"❌ {self.account_name}: Error occurred while signing in linux.do: {e}")

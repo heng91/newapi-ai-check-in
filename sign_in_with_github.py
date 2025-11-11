@@ -104,7 +104,7 @@ class GitHubSignIn:
             (成功标志, 结果字典)
         """
         print(f"ℹ️ {self.account_name}: Executing sign-in with GitHub account")
-        print(f"ℹ️ {self.account_name}: Using client_id: {client_id}, auth_state: {auth_state}")
+        print(f"ℹ️ {self.account_name}: Using client_id: {client_id}, auth_state: {auth_state}, cache_file: {cache_file_path}")
 
         async with AsyncCamoufox(
             # persistent_context=True,
@@ -116,7 +116,7 @@ class GitHubSignIn:
             # 只有在缓存文件存在时才加载 storage_state
             storage_state = cache_file_path if os.path.exists(cache_file_path) else None
             if storage_state:
-                print(f"ℹ️ {self.account_name}: Found cache file, restore state from {storage_state}")
+                print(f"ℹ️ {self.account_name}: Found cache file, restore storage state")
             else:
                 print(f"ℹ️ {self.account_name}: No cache file found, starting fresh")
 
@@ -217,21 +217,22 @@ class GitHubSignIn:
                                     await otp_input.fill(otp_code)
                                     await self._save_page_content_to_file(page, "otp_filled")
 
-                                    # 先尝试查询非 disabled 的按钮（OTP 输入会自动提交）
-                                    submit_btn = await page.query_selector('button[type="submit"]:not(:disabled)')
-                                    if submit_btn:
-                                        try:
-                                            # 等待点击后的导航完成
-                                            await submit_btn.click()
-                                            print(f"✅ {self.account_name}: OTP submitted successfully")
-                                        except Exception as nav_err:
-                                            print(f"⚠️ {self.account_name}: " f"Navigation after OTP: {nav_err}")
-                                            await self._save_page_content_to_file(page, "opt_nav_error")
-                                            # 即使导航出错也继续，因为可能已经成功
-                                            await page.wait_for_timeout(3000)
-                                    else:
-                                        print(f"❌ {self.account_name}: Submit button not found")
-                                        await self._save_page_content_to_file(page, "opt_submit_button_not_found")
+                                    # OTP 输入会自动提交
+                                    # 先尝试查询非 disabled 的按钮
+                                    # submit_btn = await page.query_selector('button[type="submit"]:not(:disabled)')
+                                    # if submit_btn:
+                                    #     try:
+                                    #         # 等待点击后的导航完成
+                                    #         await submit_btn.click()
+                                    #         print(f"✅ {self.account_name}: OTP submitted successfully")
+                                    #     except Exception as nav_err:
+                                    #         print(f"⚠️ {self.account_name}: " f"Navigation after OTP: {nav_err}")
+                                    #         await self._save_page_content_to_file(page, "opt_nav_error")
+                                    #         # 即使导航出错也继续，因为可能已经成功
+                                    #         await page.wait_for_timeout(3000)
+                                    # else:
+                                    #     print(f"❌ {self.account_name}: Submit button not found")
+                                    #     await self._save_page_content_to_file(page, "opt_submit_button_not_found")
 
                                     # 等待页面跳转完成（URL改变）
                                     try:
@@ -249,7 +250,7 @@ class GitHubSignIn:
 
                         # 保存新的会话状态
                         await context.storage_state(path=cache_file_path)
-                        print(f"✅ {self.account_name}: Session state saved to cache")
+                        print(f"✅ {self.account_name}: Storage state saved to cache file")
 
                     except Exception as e:
                         print(f"❌ {self.account_name}: Error occurred while signing in GitHub: {e}")
