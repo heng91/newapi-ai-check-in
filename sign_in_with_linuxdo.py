@@ -270,20 +270,15 @@ class LinuxDoSignIn:
                                     parsed_url = urlparse(page.url)
                                     query_params = parse_qs(parsed_url.query)
 
-                                    # 将 parse_qs 返回的列表值转换为单个值
-                                    query_dict = {k: v[0] if len(v) == 1 else v for k, v in query_params.items()}
-
                                     # 如果 query 中包含 code，说明 OAuth 回调成功
-                                    if "code" in query_dict:
-                                        print(f"✅ {self.account_name}: OAuth code received: {query_dict.get('code')}")
-                                        return True, {
-                                            "page_url_query": query_dict,
-                                            "message": "OAuth code received but user ID not found in localStorage",
-                                        }
+                                    if "code" in query_params:
+                                        print(
+                                            f"✅ {self.account_name}: OAuth code received: {query_params.get('code')}"
+                                        )
+                                        return True, query_params
                                     else:
                                         print(f"❌ {self.account_name}: OAuth failed, no code in callback")
                                         return False, {
-                                            "page_url_query": query_dict,
                                             "error": "Linux.do OAuth failed - no code in callback",
                                         }
                             else:
