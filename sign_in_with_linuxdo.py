@@ -31,6 +31,7 @@ class LinuxDoSignIn:
             password: Linux.do 密码
         """
         self.account_name = account_name
+        self.safe_account_name = "".join(c if c.isalnum() else "_" for c in self.account_name)
         self.provider_config = provider_config
         self.username = username
         self.password = password
@@ -49,15 +50,38 @@ class LinuxDoSignIn:
 
             # 生成文件名: 账号名_时间戳_原因.png
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            safe_account_name = "".join(c if c.isalnum() else "_" for c in self.account_name)
             safe_reason = "".join(c if c.isalnum() else "_" for c in reason)
-            filename = f"{safe_account_name}_{timestamp}_{safe_reason}.png"
+            filename = f"{self.safe_account_name}_{timestamp}_{safe_reason}.png"
             filepath = os.path.join(screenshots_dir, filename)
 
             await page.screenshot(path=filepath, full_page=True)
             print(f"📸 {self.account_name}: Screenshot saved to {filepath}")
         except Exception as e:
             print(f"⚠️ {self.account_name}: Failed to take screenshot: {e}")
+
+    async def _save_page_content_to_file(self, page, reason: str) -> None:
+        """保存页面 HTML 到日志文件
+
+        Args:
+            page: Camoufox 页面对象
+            reason: 日志原因描述
+        """
+        try:
+            logs_dir = "logs"
+            os.makedirs(logs_dir, exist_ok=True)
+
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            safe_reason = "".join(c if c.isalnum() else "_" for c in reason)
+            filename = f"{self.safe_account_name}_{timestamp}_linuxdo_{safe_reason}.html"
+            filepath = os.path.join(logs_dir, filename)
+
+            html_content = await page.content()
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write(html_content)
+
+            print(f"📄 {self.account_name}: Page HTML saved to {filepath}")
+        except Exception as e:
+            print(f"⚠️ {self.account_name}: Failed to save HTML: {e}")
 
     async def signin(
         self,
@@ -79,8 +103,6 @@ class LinuxDoSignIn:
         """
         print(f"ℹ️ {self.account_name}: Executing sign-in with Linux.do")
         print(f"ℹ️ {self.account_name}: Using client_id: {client_id}, auth_state: {auth_state}")
-
-      
 
         # 使用 Camoufox 启动浏览器
         async with AsyncCamoufox(
@@ -126,9 +148,7 @@ class LinuxDoSignIn:
                         allow_btn = await page.query_selector('a[href^="/oauth2/approve"]')
                         if allow_btn:
                             is_logged_in = True
-                            print(
-                                f"✅ {self.account_name}: Already logged in via cache, proceeding to authorization"
-                            )
+                            print(f"✅ {self.account_name}: Already logged in via cache, proceeding to authorization")
                         else:
                             print(f"ℹ️ {self.account_name}: Cache session expired, need to login again")
                     except Exception as e:
@@ -140,23 +160,19 @@ class LinuxDoSignIn:
                         print(f"ℹ️ {self.account_name}: Starting to sign in linux.do")
 
                         await page.goto("https://linux.do/login", wait_until="domcontentloaded")
-
                         await page.fill("#login-account-name", self.username)
                         await page.wait_for_timeout(2000)
-
                         await page.fill("#login-account-password", self.password)
                         await page.wait_for_timeout(2000)
-
                         await page.click("#login-button")
+                        await page.wait_for_timeout(10000)
 
-                        # Camoufox 应该能够自动绕过 Cloudflare 验证
-                        # 但我们仍然检查是否遇到验证页面
-                        print(f"ℹ️ {self.account_name}: Waiting for login completion...")
+                        print(f"ℹ️ {self.account_name}: sign-in submitted {page.url}")
+                        await self._save_page_content_to_file(page, "sign_in_result")
 
                         try:
                             # 等待可能的 Cloudflare 验证完成
                             # Camoufox 应该会自动处理，我们只需要等待
-                            await page.wait_for_timeout(10000)
 
                             current_url = page.url
                             if "linux.do/challenge" in current_url:
@@ -207,9 +223,7 @@ class LinuxDoSignIn:
                         api_user = None
                         try:
                             try:
-                                await page.wait_for_function(
-                                    'localStorage.getItem("user") !== null', timeout=10000
-                                )
+                                await page.wait_for_function('localStorage.getItem("user") !== null', timeout=10000)
                             except Exception:
                                 await page.wait_for_timeout(5000)
 
@@ -242,9 +256,7 @@ class LinuxDoSignIn:
 
                             # 如果 query 中包含 code，说明 OAuth 回调成功
                             if "code" in query_params:
-                                print(
-                                    f"✅ {self.account_name}: OAuth code received: {query_params.get('code')}"
-                                )
+                                print(f"✅ {self.account_name}: OAuth code received: {query_params.get('code')}")
                                 return True, query_params
                             else:
                                 print(f"❌ {self.account_name}: OAuth failed, no code in callback")
@@ -271,5 +283,3 @@ class LinuxDoSignIn:
             finally:
                 await page.close()
                 await context.close()
-
-

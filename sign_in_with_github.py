@@ -52,9 +52,8 @@ class GitHubSignIn:
 
             # 生成文件名: 账号名_时间戳_原因.png
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            safe_account_name = "".join(c if c.isalnum() else "_" for c in self.account_name)
             safe_reason = "".join(c if c.isalnum() else "_" for c in reason)
-            filename = f"{safe_account_name}_{timestamp}_{safe_reason}.png"
+            filename = f"{self.safe_account_name}_{timestamp}_{safe_reason}.png"
             filepath = os.path.join(screenshots_dir, filename)
 
             await page.screenshot(path=filepath, full_page=True)
@@ -69,11 +68,9 @@ class GitHubSignIn:
             page: Camoufox 页面对象
             reason: 日志原因描述
         """
-         
-        logs_dir = "logs"
-        os.makedirs(logs_dir, exist_ok=True)
-        
         try:
+            logs_dir = "logs"
+            os.makedirs(logs_dir, exist_ok=True)
 
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             safe_reason = "".join(c if c.isalnum() else "_" for c in reason)
@@ -85,8 +82,8 @@ class GitHubSignIn:
                 f.write(html_content)
 
             print(f"📄 {self.account_name}: Page HTML saved to {filepath}")
-        except Exception as save_err:
-            print(f"⚠️ {self.account_name}: Failed to save HTML: {save_err}")
+        except Exception as e:
+            print(f"⚠️ {self.account_name}: Failed to save HTML: {e}")
 
     async def signin(
         self,
@@ -124,7 +121,7 @@ class GitHubSignIn:
                 print(f"ℹ️ {self.account_name}: No cache file found, starting fresh")
 
             context = await browser.new_context(storage_state=storage_state)
-            
+
             # 设置从 auth_state 获取的 session cookies 到页面上下文
             if auth_cookies:
                 await context.add_cookies(auth_cookies)
@@ -144,16 +141,12 @@ class GitHubSignIn:
                         print(f"ℹ️ {self.account_name}: Checking login status at {oauth_url}")
                         # 直接访问授权页面检查是否已登录
                         response = await page.goto(oauth_url, wait_until="domcontentloaded")
-                        print(
-                            f"ℹ️ {self.account_name}: redirected to app page {response.url if response else 'N/A'}"
-                        )
+                        print(f"ℹ️ {self.account_name}: redirected to app page {response.url if response else 'N/A'}")
 
                         # GitHub 登录后可能直接跳转回应用页面
                         if response and response.url.startswith(self.provider_config.origin):
                             is_logged_in = True
-                            print(
-                                f"✅ {self.account_name}: Already logged in via cache, proceeding to authorization"
-                            )
+                            print(f"✅ {self.account_name}: Already logged in via cache, proceeding to authorization")
                         else:
                             # 检查是否出现授权按钮（表示已登录）
                             authorize_btn = await page.query_selector('button[type="submit"]')
@@ -179,21 +172,20 @@ class GitHubSignIn:
                         await page.click('input[type="submit"][value="Sign in"]')
                         await page.wait_for_timeout(10000)
 
+                        print(f"ℹ️ {self.account_name}: sign-in submitted {page.url}")
+                        await self._save_page_content_to_file(page, "sign_in_result")
+
                         # 处理两步验证（如果需要）
                         try:
                             # 检查是否需要两步验证
                             otp_input = await page.query_selector('input[name="otp"]')
                             if otp_input:
                                 print(f"ℹ️ {self.account_name}: Two-factor authentication required")
-                                
-                                await self._save_page_content_to_file(page, 'opt_required')
 
                                 # 尝试通过 wait-for-secrets 自动获取 OTP
                                 otp_code = None
                                 try:
-                                    print(
-                                        f"🔐 {self.account_name}: Attempting to retrieve OTP via wait-for-secrets..."
-                                    )
+                                    print(f"🔐 {self.account_name}: Attempting to retrieve OTP via wait-for-secrets...")
                                     # Define secret object
                                     wait_for_secrets = WaitForSecrets()
                                     secret_obj = {
@@ -219,29 +211,35 @@ class GitHubSignIn:
                                 if otp_code:
                                     # 自动填充 OTP
                                     print(f"✅ {self.account_name}: Auto-filling OTP code")
-                                    await otp_input.fill(otp_code)
-                                    await self._save_page_content_to_file(page, 'opt_filled')
                                     
-                                    # 提交表单并等待导航
-                                    submit_btn = await page.query_selector('button[type="submit"]')
+                                    # 记录当前URL用于检测跳转
+                                    current_url = page.url
+                                    
+                                    await otp_input.fill(otp_code)
+                                    await self._save_page_content_to_file(page, "otp_filled")
+
+                                    # 先尝试查询非 disabled 的按钮（OTP 输入会自动提交）
+                                    submit_btn = await page.query_selector('button[type="submit"]:not(:disabled)')
                                     if submit_btn:
                                         try:
                                             # 等待点击后的导航完成
                                             await submit_btn.click()
-                                            
-                                            await self._save_page_content_to_file(page, 'opt_submitted')
-                                            # 等待页面跳转完成
-                                            await page.wait_for_url(
-                                                lambda url: "sessions/verified-device" not in url,
-                                                timeout=10000
-                                            )
                                             print(f"✅ {self.account_name}: OTP submitted successfully")
                                         except Exception as nav_err:
-                                            print(f"⚠️ {self.account_name}: Navigation after OTP: {nav_err}")
-
-                                            await self._take_screenshot(page, 'opt_nav_error')
+                                            print(f"⚠️ {self.account_name}: " f"Navigation after OTP: {nav_err}")
+                                            await self._save_page_content_to_file(page, "opt_nav_error")
                                             # 即使导航出错也继续，因为可能已经成功
                                             await page.wait_for_timeout(3000)
+                                    else:
+                                        print(f"❌ {self.account_name}: Submit button not found")
+                                        await self._save_page_content_to_file(page, "opt_submit_button_not_found")
+
+                                    # 等待页面跳转完成（URL改变）
+                                    try:
+                                        await page.wait_for_url(lambda url: url != current_url, timeout=10000)
+                                    except Exception:
+                                        # URL未改变也继续，可能已经在正确页面
+                                        pass
                                 else:
                                     # 回退到手动输入
                                     print(f"ℹ️ {self.account_name}: Please enter OTP manually in the browser")
@@ -263,9 +261,7 @@ class GitHubSignIn:
                     try:
                         print(f"ℹ️ {self.account_name}: Navigating to authorization page: {oauth_url}")
                         response = await page.goto(oauth_url, wait_until="domcontentloaded")
-                        print(
-                            f"ℹ️ {self.account_name}: redirected to app page {response.url if response else 'N/A'}"
-                        )
+                        print(f"ℹ️ {self.account_name}: redirected to app page {response.url if response else 'N/A'}")
 
                         # GitHub 登录后可能直接跳转回应用页面
                         if response and response.url.startswith(self.provider_config.origin):
@@ -322,7 +318,7 @@ class GitHubSignIn:
                     else:
                         print(f"⚠️ {self.account_name}: OAuth callback received but no user ID found")
                         await self._take_screenshot(page, "github_oauth_failed_no_user_id")
-                        
+
                         parsed_url = urlparse(page.url)
                         query_params = parse_qs(parsed_url.query)
 
