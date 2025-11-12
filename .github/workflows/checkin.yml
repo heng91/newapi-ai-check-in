@@ -76,6 +76,8 @@ jobs:
         path: |
           storage-states
         key: storage-state-${{ hashFiles('storage-states/*.json') }}
+        restore-keys: |
+          storage-state-
 
     - name: 恢复余额历史缓存
       uses: actions/cache@v4
@@ -83,7 +85,9 @@ jobs:
         path: |
           balance_hash.txt
         key: balance-hash-${{ hashFiles('balance_hash.txt') }}
-
+        restore-keys: |
+          balance-hash-
+            
     - name: 执行签到
       env:
         ACCOUNTS: ${{ secrets.ACCOUNTS }}
