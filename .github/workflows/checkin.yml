@@ -75,18 +75,14 @@ jobs:
       with:
         path: |
           storage-states
-        key: storage-state-${{ github.sha }}
-        restore-keys: |
-          storage-state-
+        key: storage-state-${{ hashFiles('storage-states/*.json') }}
 
     - name: 恢复余额历史缓存
       uses: actions/cache@v4
       with:
         path: |
           balance_hash.txt
-        key: balance-hash-${{ github.sha }}
-        restore-keys: |
-          balance-hash-
+        key: balance-hash-${{ hashFiles('balance_hash.txt') }}
 
     - name: 执行签到
       env:
@@ -128,7 +124,6 @@ jobs:
         path: |
           logs/
           screenshots/
-          storage-states/
         if-no-files-found: ignore
         retention-days: 7
 
