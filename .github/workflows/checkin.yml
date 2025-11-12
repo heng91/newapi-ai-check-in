@@ -71,23 +71,23 @@ jobs:
         echo "✅ Camoufox 浏览器安装完成"
 
     - name: 恢复登录状态缓存
-      uses: actions/cache@v4
+      uses: actions/cache/restore@v4
       with:
         path: |
           storage-states
-        key: storage-state-${{ github.sha }}
+        key: storage-state-${{ hashFiles('storage-states/*.json') }}
         restore-keys: |
           storage-state-
 
     - name: 恢复余额历史缓存
-      uses: actions/cache@v4
+      uses: actions/cache/restore@v4
       with:
         path: |
           balance_hash.txt
-        key: balance-hash-${{ github.sha }}
+        key: balance-hash-${{ hashFiles('balance_hash.txt') }}
         restore-keys: |
           balance-hash-
-
+            
     - name: 执行签到
       env:
         ACCOUNTS: ${{ secrets.ACCOUNTS }}
@@ -120,6 +120,22 @@ jobs:
         # 执行签到
         uv run python -u main.py
 
+    - name: 保存登录状态缓存
+      if: hashFiles('storage-states/*.json') != ''
+      uses: actions/cache/save@v4
+      with:
+        path: |
+          storage-states
+        key: storage-state-${{ hashFiles('storage-states/*.json') }}
+
+    - name: 保存余额历史缓存
+      if: hashFiles('balance_hash.txt') != ''
+      uses: actions/cache/save@v4
+      with:
+        path: |
+          balance_hash.txt
+        key: balance-hash-${{ hashFiles('balance_hash.txt') }}
+
     - name: 保存日志
       if: always()
       uses: actions/upload-artifact@v4
@@ -128,7 +144,6 @@ jobs:
         path: |
           logs/
           screenshots/
-          storage-states/
         if-no-files-found: ignore
         retention-days: 7
 
