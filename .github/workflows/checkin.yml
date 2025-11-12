@@ -121,6 +121,7 @@ jobs:
         uv run python -u main.py
 
     - name: 保存登录状态缓存
+      if: hashFiles('storage-states/*.json') != ''
       uses: actions/cache/save@v4
       with:
         path: |
@@ -128,6 +129,7 @@ jobs:
         key: storage-state-${{ hashFiles('storage-states/*.json') }}
 
     - name: 保存余额历史缓存
+      if: hashFiles('balance_hash.txt') != ''
       uses: actions/cache/save@v4
       with:
         path: |
