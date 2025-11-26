@@ -144,8 +144,9 @@ class GitHubSignIn:
                         # 直接访问授权页面检查是否已登录
                         response = await page.goto(oauth_url, wait_until="domcontentloaded")
                         print(f"ℹ️ {self.account_name}: redirected to app page {response.url if response else 'N/A'}")
+                        self._save_page_content_to_file(page, "sign_in_check")
 
-                        # GitHub 登录后可能直接跳转回应用页面
+                        # 登录后可能直接跳转回应用页面
                         if response and response.url.startswith(self.provider_config.origin):
                             is_logged_in = True
                             print(f"✅ {self.account_name}: Already logged in via cache, proceeding to authorization")
