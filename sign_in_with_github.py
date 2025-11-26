@@ -104,7 +104,9 @@ class GitHubSignIn:
             (成功标志, 结果字典)
         """
         print(f"ℹ️ {self.account_name}: Executing sign-in with GitHub account")
-        print(f"ℹ️ {self.account_name}: Using client_id: {client_id}, auth_state: {auth_state}, cache_file: {cache_file_path}")
+        print(
+            f"ℹ️ {self.account_name}: Using client_id: {client_id}, auth_state: {auth_state}, cache_file: {cache_file_path}"
+        )
 
         async with AsyncCamoufox(
             # persistent_context=True,
@@ -174,13 +176,29 @@ class GitHubSignIn:
 
                         await self._save_page_content_to_file(page, "sign_in_result")
 
+                        # 处理账号选择（如果需要）
+                        try:
+                            switch_account_form = await page.query_selector('form[action="/switch_account"]')
+                            if switch_account_form:
+                                print(f"ℹ️ {self.account_name}: Account selection required")
+                                submit_btn = await switch_account_form.query_selector('input[type="submit"]')
+                                if submit_btn:
+                                    print(f"ℹ️ {self.account_name}: Clicking account selection submit button")
+                                    await submit_btn.click()
+                                    await page.wait_for_timeout(5000)
+                                    await self._save_page_content_to_file(page, "account_selected")
+                                else:
+                                    print(f"⚠️ {self.account_name}: Account selection submit button not found")
+                        except Exception as e:
+                            print(f"⚠️ {self.account_name}: Error handling account selection: {e}")
+
                         # 处理两步验证（如果需要）
                         try:
                             # 检查是否需要两步验证
                             otp_input = await page.query_selector('input[name="otp"]')
                             if otp_input:
                                 print(f"ℹ️ {self.account_name}: Two-factor authentication required")
-                                                                                                  
+
                                 # 记录当前URL用于检测跳转
                                 current_url = page.url
                                 print(f"ℹ️ {self.account_name}: Current page url is {current_url}")
@@ -213,7 +231,7 @@ class GitHubSignIn:
 
                                 if otp_code:
                                     # 自动填充 OTP
-                                    print(f"✅ {self.account_name}: Auto-filling OTP code")                                    
+                                    print(f"✅ {self.account_name}: Auto-filling OTP code")
                                     await otp_input.fill(otp_code)
                                     await self._save_page_content_to_file(page, "otp_filled")
 
@@ -246,7 +264,6 @@ class GitHubSignIn:
                                     await page.wait_for_timeout(30000)  # 等待30秒让用户手动输入
                         except Exception as e:
                             print(f"⚠️ {self.account_name}: Error handling 2FA: {e}")
-                            pass
 
                         # 保存新的会话状态
                         await context.storage_state(path=cache_file_path)
