@@ -47,14 +47,14 @@ jobs:
         uv sync
         echo "✅ 环境初始化完成"
 
-        - name: 恢复余额历史缓存
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            balance_hash_996.txt
-          key: balance-hash-996-${{ hashFiles('balance_hash_996.txt') }}
-          restore-keys: |
-            balance-hash-996-
+    - name: 恢复余额历史缓存
+      uses: actions/cache/restore@v4
+      with:
+        path: |
+          balance_hash_996.txt
+        key: balance-hash-996-${{ hashFiles('balance_hash_996.txt') }}
+        restore-keys: |
+          balance-hash-996-
 
     - name: 执行签到
       env:

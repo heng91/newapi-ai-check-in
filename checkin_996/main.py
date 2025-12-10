@@ -33,7 +33,7 @@ def load_access_tokens() -> list[str] | None:
 
     try:
         # 支持多种格式
-        if tokens_str.startswith('['):
+        if tokens_str.startswith("["):
             # JSON 数组格式
             tokens = json.loads(tokens_str)
             if not isinstance(tokens, list):
@@ -41,7 +41,7 @@ def load_access_tokens() -> list[str] | None:
                 return None
         else:
             # 逗号分隔格式
-            tokens = [token.strip() for token in tokens_str.split(',') if token.strip()]
+            tokens = [token.strip() for token in tokens_str.split(",") if token.strip()]
 
         # 验证每个 token
         valid_tokens = []
@@ -133,7 +133,7 @@ async def main():
     # 执行签到
     success_count = 0
     total_count = len(tokens)
-    notification_content = ["\n📊 Check-in Summary:"]
+    notification_content = []
     current_checkin_info = {}
 
     for i, token in enumerate(tokens):
@@ -158,11 +158,11 @@ async def main():
                 # 收集签到后信息
                 current_checkin_info[f"account_{i + 1}"] = user_info
                 notification_content.append(
-                        f"  📝 {account_name}: "
-                        f"🔥{user_info.get('continuous_days', 0)}天 | "
-                        f"📈{user_info.get('total_checkins', 0)}次 | "
-                        f"💰${user_info.get('total_rewards_usd', '0')}"
-                    )
+                    f"  📝 {account_name}: "
+                    f"🔥连续签到{user_info.get('continuous_days', 0)}天 | "
+                    f"📈总签到{user_info.get('total_checkins', 0)}次 | "
+                    f"💰${user_info.get('total_rewards_usd', '0')}"
+                )
             else:
                 print(f"❌ {account_name}: Check-in failed")
                 error_msg = user_info.get("error", "Unknown error") if user_info else "Unknown error"
@@ -191,7 +191,7 @@ async def main():
 
     # 构建通知内容
     if need_notify and notification_content:
-         # 构建通知内容
+        # 构建通知内容
         summary = [
             "-------------------------------",
             "📢 Check-in result statistics:",
@@ -208,7 +208,7 @@ async def main():
 
         time_info = f'🕓 Execution time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}'
 
-        notify_content = "\n\n".join([time_info, "\n".join(notification_content), "\n".join(summary)])
+        notify_content = "\n\n".join([time_info, "📊 Check-in Summary:\n".join(notification_content), "\n".join(summary)])
 
         print(notify_content)
         # 发送通知
