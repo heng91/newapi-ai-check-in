@@ -208,7 +208,9 @@ async def main():
 
         time_info = f'🕓 Execution time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}'
 
-        notify_content = "\n\n".join([time_info, "📊 Check-in Summary:\n".join(notification_content), "\n".join(summary)])
+        notify_content = "\n\n".join(
+            [time_info, "📊 Check-in Summary:\n" + "\n".join(notification_content), "\n".join(summary)]
+        )
 
         print(notify_content)
         # 发送通知
