@@ -47,6 +47,14 @@ jobs:
         uv sync
         echo "✅ 环境初始化完成"
 
+    - name: 恢复余额历史缓存
+      uses: actions/cache/restore@v4
+      with:
+        path: |
+          balance_hash_996.txt
+        key: balance-hash-996-${{ hashFiles('balance_hash_996.txt') }}
+        restore-keys: |
+          balance-hash-996-
 
     - name: 执行签到
       env:
@@ -64,6 +72,14 @@ jobs:
       run: |
         # 执行签到
         uv run python -u checkin_996/main.py
+
+    - name: 保存余额历史缓存
+      if: hashFiles('balance_hash_996.txt') != ''
+      uses: actions/cache/save@v4
+      with:
+        path: |
+          balance_hash_996.txt
+        key: balance-hash-996-${{ hashFiles('balance_hash_996.txt') }}
 
     - name: 保存日志
       if: always()
