@@ -133,11 +133,11 @@ async def main():
     # 执行签到
     success_count = 0
     total_count = len(tokens)
-    notification_content = []
+    notification_content = ["\n📊 Check-in Summary:"]
     current_checkin_info = {}
 
     for i, token in enumerate(tokens):
-        account_name = f"996_account_{i + 1}"
+        account_name = f"account_{i + 1}"
 
         if len(notification_content) > 0:
             notification_content.append("\n-------------------------------")
@@ -157,7 +157,12 @@ async def main():
 
                 # 收集签到后信息
                 current_checkin_info[f"account_{i + 1}"] = user_info
-                notification_content.append(f"✅ {account_name}: Check-in successful")
+                notification_content.append(
+                        f"  📝 {account_name}: "
+                        f"🔥{user_info.get('continuous_days', 0)}天 | "
+                        f"📈{user_info.get('total_checkins', 0)}次 | "
+                        f"💰${user_info.get('total_rewards_usd', '0')}"
+                    )
             else:
                 print(f"❌ {account_name}: Check-in failed")
                 error_msg = user_info.get("error", "Unknown error") if user_info else "Unknown error"
@@ -185,37 +190,27 @@ async def main():
         print("ℹ️ No check-in info changes detected, skipping notification")
 
     # 构建通知内容
-    if need_notify:
-        notification_content.insert(0, "📢 996 hub Check-in Results:")
-        notification_content.insert(1, f"🔵 Success: {success_count}/{total_count}")
-        notification_content.insert(2, f"🔴 Failed: {total_count - success_count}/{total_count}")
-        notification_content.insert(3, "-------------------------------")
+    if need_notify and notification_content:
+         # 构建通知内容
+        summary = [
+            "-------------------------------",
+            "📢 Check-in result statistics:",
+            f"🔵 Success: {success_count}/{total_count}",
+            f"🔴 Failed: {total_count - success_count}/{total_count}",
+        ]
 
         if success_count == total_count:
-            notification_content.append("✅ All accounts check-in successful!")
+            summary.append("✅ All accounts check-in successful!")
         elif success_count > 0:
-            notification_content.append("⚠️ Some accounts check-in successful")
+            summary.append("⚠️ Some accounts check-in successful")
         else:
-            notification_content.append("❌ All accounts check-in failed")
+            summary.append("❌ All accounts check-in failed")
 
         time_info = f'🕓 Execution time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}'
-        notification_content.insert(0, time_info)
 
-        # 添加签到统计信息
-        if current_checkin_info:
-            notification_content.append("\n📊 Check-in Summary:")
-            for account_key, info in current_checkin_info.items():
-                if info:
-                    notification_content.append(
-                        f"  📝 {account_key}: "
-                        f"🔥{info.get('continuous_days', 0)}天 | "
-                        f"📈{info.get('total_checkins', 0)}次 | "
-                        f"💰${info.get('total_rewards_usd', '0')}"
-                    )
+        notify_content = "\n\n".join([time_info, "\n".join(notification_content), "\n".join(summary)])
 
-        notify_content = "\n\n".join(notification_content)
-        print("\n" + notify_content)
-
+        print(notify_content)
         # 发送通知
         if success_count == total_count:
             notify.push_message("996 hub Check-in Success", notify_content, msg_type="text")
