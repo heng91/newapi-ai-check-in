@@ -26,9 +26,9 @@ CHECKIN_HASH_FILE = "balance_hash_996.txt"
 
 def load_access_tokens() -> list[str] | None:
     """从环境变量加载 access tokens"""
-    tokens_str = os.getenv("ACCESS_TOKENS_996")
+    tokens_str = os.getenv("ACCOUNTS_996")
     if not tokens_str:
-        print("❌ ACCESS_TOKENS_996 environment variable not found")
+        print("❌ ACCOUNTS_996 environment variable not found")
         return None
 
     try:
@@ -37,7 +37,7 @@ def load_access_tokens() -> list[str] | None:
             # JSON 数组格式
             tokens = json.loads(tokens_str)
             if not isinstance(tokens, list):
-                print("❌ ACCESS_TOKENS_996 must be an array format")
+                print("❌ ACCOUNTS_996 must be an array format")
                 return None
         else:
             # 逗号分隔格式
@@ -58,7 +58,7 @@ def load_access_tokens() -> list[str] | None:
         print(f"✅ Loaded {len(valid_tokens)} access token(s)")
         return valid_tokens
     except Exception as e:
-        print(f"❌ Failed to parse ACCESS_TOKENS_996: {e}")
+        print(f"❌ Failed to parse ACCOUNTS_996: {e}")
         return None
 
 

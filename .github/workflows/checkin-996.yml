@@ -50,7 +50,7 @@ jobs:
 
     - name: 执行签到
       env:
-        ACCESS_TOKENS_996: ${{ secrets.ACCESS_TOKENS_996 }}
+        ACCOUNTS_996: ${{ secrets.ACCOUNTS_996 }}
         PROXY: ${{secrets.PROXY_996}}
         DINGDING_WEBHOOK: ${{ secrets.DINGDING_WEBHOOK }}
         EMAIL_USER: ${{ secrets.EMAIL_USER }}
