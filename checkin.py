@@ -805,12 +805,14 @@ class CheckIn:
                         user_data = response.get("data", {})
                         quota = round(user_data.get("quota", 0) / 500000, 2)
                         used_quota = round(user_data.get("used_quota", 0) / 500000, 2)
-                        print(f"✅ {self.account_name}: " f"Current balance: ${quota}, Used: ${used_quota}")
+                        bonus_quota = round(user_data.get("bonus_quota", 0) / 500000, 2)
+                        print(f"✅ {self.account_name}: " f"Current balance: ${quota}, Used: ${used_quota}, Bonus: ${bonus_quota}")
                         return {
                             "success": True,
                             "quota": quota,
                             "used_quota": used_quota,
-                            "display": f"Current balance: ${quota}, Used: ${used_quota}",
+                            "bonus_quota": bonus_quota,
+                            "display": f"Current balance: ${quota}, Used: ${used_quota}, Bonus: ${bonus_quota}",
                         }
 
                     return {
@@ -857,11 +859,13 @@ class CheckIn:
                     user_data = json_data.get("data", {})
                     quota = round(user_data.get("quota", 0) / 500000, 2)
                     used_quota = round(user_data.get("used_quota", 0) / 500000, 2)
+                    bonus_quota = round(user_data.get("bonus_quota", 0) / 500000, 2)
                     return {
                         "success": True,
                         "quota": quota,
                         "used_quota": used_quota,
-                        "display": f"Current balance: ${quota}, Used: ${used_quota}",
+                        "bonus_quota": bonus_quota,
+                        "display": f"Current balance: ${quota}, Used: ${used_quota}, Bonus: ${bonus_quota}",
                     }
                 else:
                     error_msg = json_data.get("message", "Unknown error")
@@ -879,14 +883,14 @@ class CheckIn:
                 "error": f"Failed to get user info, {e}",
             }
 
-    def execute_check_in(self, client: httpx.Client, headers: dict):
+    def execute_check_in(self, client: httpx.Client, headers: dict, api_user: str | int,):
         """执行签到请求"""
         print(f"🌐 {self.account_name}: Executing check-in")
 
         checkin_headers = headers.copy()
         checkin_headers.update({"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"})
 
-        response = client.post(self.provider_config.get_sign_in_url(), headers=checkin_headers, timeout=30)
+        response = client.post(self.provider_config.get_sign_in_url(api_user), headers=checkin_headers, timeout=30)
 
         print(f"📨 {self.account_name}: Response status code {response.status_code}")
 
@@ -957,7 +961,7 @@ class CheckIn:
                 return False, {"error": "Failed to get user info"}
 
             if needs_check_in is None and self.provider_config.needs_manual_check_in():
-                success = self.execute_check_in(client, headers)
+                success = self.execute_check_in(client, headers, api_user)
                 return success, user_info if user_info else {"error": "No user info available"}
             else:
                 print(f"ℹ️ {self.account_name}: Check-in completed automatically (triggered by user info request)")
