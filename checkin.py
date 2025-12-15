@@ -951,21 +951,24 @@ class CheckIn:
                 self.provider_config.api_user_key: f"{api_user}",
             }
 
+            if needs_check_in is None and self.provider_config.needs_manual_check_in():
+                success = self.execute_check_in(client, headers, api_user)
+                if not success:
+                    return False, {"error": "Check-in failed"}
+            else:
+                print(f"ℹ️ {self.account_name}: Check-in completed automatically (triggered by user info request)")
+
             user_info = await self.get_user_info(client, headers)
             if user_info and user_info.get("success"):
                 success_msg = user_info.get("display", "User info retrieved successfully")
-                print(f"✅ {success_msg}")
+                print(f"✅ {self.account_name}: {success_msg}")
+                return True, user_info
             elif user_info:
                 error_msg = user_info.get("error", "Unknown error")
                 print(f"❌ {self.account_name}: {error_msg}")
                 return False, {"error": "Failed to get user info"}
-
-            if needs_check_in is None and self.provider_config.needs_manual_check_in():
-                success = self.execute_check_in(client, headers, api_user)
-                return success, user_info if user_info else {"error": "No user info available"}
             else:
-                print(f"ℹ️ {self.account_name}: Check-in completed automatically (triggered by user info request)")
-                return True, user_info if user_info else {"error": "No user info available"}
+                return False, {"error": "No user info available"}
 
         except Exception as e:
             print(f"❌ {self.account_name}: Error occurred during check-in process - {e}")
