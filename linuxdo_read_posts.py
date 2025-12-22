@@ -217,7 +217,7 @@ class LinuxDoReadPosts:
         except IOError as e:
             print(f"⚠️ {self.username}: Failed to save topic ID: {e}")
 
-    async def _read_posts(self, page, base_topic_id: int, max_posts: int) -> int:
+    async def _read_posts(self, page, base_topic_id: int, max_posts: int) -> tuple[int, int]:
         """浏览帖子
 
         从 base_topic_id 开始，随机向上加 1-5 打开链接，
@@ -229,7 +229,7 @@ class LinuxDoReadPosts:
             max_posts: 最大浏览帖子数
 
         Returns:
-            最后浏览的帖子ID
+            (最后浏览的帖子ID, 实际阅读数量)
         """
 
         # 从缓存文件读取上次的 topic_id
@@ -315,7 +315,7 @@ class LinuxDoReadPosts:
         # 保存当前 topic_id 到缓存
         self._save_topic_id(current_topic_id)
 
-        return current_topic_id
+        return current_topic_id, read_count
 
     async def _scroll_to_read(self, page) -> None:
         """自动滚动浏览帖子内容
@@ -417,11 +417,11 @@ class LinuxDoReadPosts:
 
                 # 浏览帖子
                 print(f"ℹ️ {self.username}: Starting to read posts...")
-                last_topic_id = await self._read_posts(page, base_topic_id, max_posts)
+                last_topic_id, read_count = await self._read_posts(page, base_topic_id, max_posts)
 
-                print(f"✅ {self.username}: Successfully read {max_posts} posts")
+                print(f"✅ {self.username}: Successfully read {read_count} posts")
                 return True, {
-                    "read_count": max_posts,
+                    "read_count": read_count,
                     "last_topic_id": last_topic_id,
                 }
 
