@@ -252,7 +252,7 @@ class LinuxDoReadPosts:
             try:
                 print(f"ℹ️ {self.username}: Opening topic {current_topic_id}...")
                 await page.goto(topic_url, wait_until="domcontentloaded")
-                await page.wait_for_timeout(10000)
+                await page.wait_for_timeout(3000)
 
                 # 查找 timeline-replies 标签
                 timeline_element = await page.query_selector(".timeline-replies")
