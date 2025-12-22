@@ -249,7 +249,7 @@ class LinuxDoReadPosts:
             # 如果连续无效超过5次，跳过100个ID
             if invalid_count >= 5:
                 current_topic_id += 100
-                print(f"ℹ️ {self.username}: Too many invalid topics, jumping ahead by 100 to {current_topic_id}")
+                print(f"⚠️ {self.username}: Too many invalid topics, jumping ahead by 100 to {current_topic_id}")
                 invalid_count = 0
             else:
                 # 随机向上加 1-5
@@ -295,7 +295,7 @@ class LinuxDoReadPosts:
                                     f"{remaining_read_count} remaining..."
                                 )
                         else:
-                            print(f"ℹ️ {self.username}: Timeline read error(content: {inner_text}), continue")
+                            print(f"⚠️ {self.username}: Timeline read error(content: {inner_text}), continue")
                             invalid_count += 1
                             continue
                     except (ValueError, IndexError) as e:
@@ -305,7 +305,7 @@ class LinuxDoReadPosts:
                     # 模拟阅读后等待
                     await page.wait_for_timeout(random.randint(1000, 2000))
                 else:
-                    print(f"ℹ️ {self.username}: Topic {current_topic_id} not found or invalid, skipping...")
+                    print(f"⚠️ {self.username}: Topic {current_topic_id} not found or invalid, skipping...")
                     invalid_count += 1
 
             except Exception as e:
@@ -384,7 +384,8 @@ class LinuxDoReadPosts:
         cache_file_path = f"{self.storage_state_dir}/linuxdo_{self.username_hash}_storage_state.json"
 
         # 从环境变量获取起始 ID
-        base_topic_id = int(os.getenv("LINUXDO_BASE_TOPIC_ID", DEFAULT_BASE_TOPIC_ID))
+        base_topic_id_str = os.getenv("LINUXDO_BASE_TOPIC_ID", "")
+        base_topic_id = int(base_topic_id_str) if base_topic_id_str else DEFAULT_BASE_TOPIC_ID
 
         async with AsyncCamoufox(
             headless=False,
@@ -524,33 +525,44 @@ async def main():
         print(f"📌 Processing: {account['username']}")
         print(f"{'='*50}")
 
-        reader = LinuxDoReadPosts(
-            username=account["username"],
-            password=account["password"],
-        )
+        try:
+            reader = LinuxDoReadPosts(
+                username=account["username"],
+                password=account["password"],
+            )
 
-        start_time = datetime.now()
-        success, result = await reader.run(random.randint(50, 100))
-        end_time = datetime.now()
-        duration = end_time - start_time
+            start_time = datetime.now()
+            success, result = await reader.run(random.randint(50, 100))
+            end_time = datetime.now()
+            duration = end_time - start_time
 
-        # 格式化时长为 HH:MM:SS
-        total_seconds = int(duration.total_seconds())
-        hours, remainder = divmod(total_seconds, 3600)
-        minutes, seconds = divmod(remainder, 60)
-        duration_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+            # 格式化时长为 HH:MM:SS
+            total_seconds = int(duration.total_seconds())
+            hours, remainder = divmod(total_seconds, 3600)
+            minutes, seconds = divmod(remainder, 60)
+            duration_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
-        print(f"Result: success={success}, result={result}, duration={duration_str}")
+            print(f"Result: success={success}, result={result}, duration={duration_str}")
 
-        # 记录结果
-        results.append(
-            {
-                "username": account["username"],
-                "success": success,
-                "result": result,
-                "duration": duration_str,
-            }
-        )
+            # 记录结果
+            results.append(
+                {
+                    "username": account["username"],
+                    "success": success,
+                    "result": result,
+                    "duration": duration_str,
+                }
+            )
+        except Exception as e:
+            print(f"❌ {account['username']}: Exception occurred: {e}")
+            results.append(
+                {
+                    "username": account["username"],
+                    "success": False,
+                    "result": {"error": str(e)},
+                    "duration": "00:00:00",
+                }
+            )
 
     # 发送通知
     if results:
