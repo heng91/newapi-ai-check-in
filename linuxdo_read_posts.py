@@ -245,8 +245,8 @@ class LinuxDoReadPosts:
         read_count = 0
 
         while read_count < max_posts:
-            # 随机向上加 1-10
-            current_topic_id += random.randint(1, 10)
+            # 随机向上加 1-5
+            current_topic_id += random.randint(1, 5)
             topic_url = f"https://linux.do/t/topic/{current_topic_id}"
 
             try:
