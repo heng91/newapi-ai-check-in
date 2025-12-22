@@ -220,7 +220,7 @@ class LinuxDoReadPosts:
     async def _read_posts(self, page, base_topic_id: int, max_posts: int) -> int:
         """浏览帖子
 
-        从 base_topic_id 开始，随机向上加 1-10 打开链接，
+        从 base_topic_id 开始，随机向上加 1-5 打开链接，
         查找 class timeline-replies 标签判断帖子是否有效。
         根据剩余可读数量自动滚动浏览。
 
@@ -355,7 +355,7 @@ class LinuxDoReadPosts:
         """执行浏览帖子任务
 
         Args:
-            max_posts: 最大浏览帖子数，默认 400
+            max_posts: 最大浏览帖子数，默认 100
 
         Returns:
             (成功标志, 结果信息字典)
