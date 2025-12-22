@@ -289,8 +289,11 @@ class LinuxDoReadPosts:
                                 await self._scroll_to_read(page)
 
                                 read_count += total_pages - current_page
-                                remaining_read_count = max_posts - read_count
-                                print(f"ℹ️ {self.username}: {read_count} read, {remaining_read_count} remaining...")
+                                remaining_read_count = max(0, max_posts - read_count)
+                                print(
+                                    f"ℹ️ {self.username}: {read_count} read, "
+                                    f"{remaining_read_count} remaining..."
+                                )
                         else:
                             print(f"ℹ️ {self.username}: Timeline read error(content: {inner_text}), continue")
                             invalid_count += 1
