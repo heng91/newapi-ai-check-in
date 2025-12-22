@@ -243,10 +243,18 @@ class LinuxDoReadPosts:
         )
 
         read_count = 0
+        invalid_count = 0  # 连续无效帖子计数
 
         while read_count < max_posts:
-            # 随机向上加 1-5
-            current_topic_id += random.randint(1, 5)
+            # 如果连续无效超过5次，跳过100个ID
+            if invalid_count >= 5:
+                current_topic_id += 100
+                print(f"ℹ️ {self.username}: Too many invalid topics, jumping ahead by 100 to {current_topic_id}")
+                invalid_count = 0
+            else:
+                # 随机向上加 1-5
+                current_topic_id += random.randint(1, 5)
+
             topic_url = f"https://linux.do/t/topic/{current_topic_id}"
 
             try:
@@ -258,16 +266,19 @@ class LinuxDoReadPosts:
                 timeline_element = await page.query_selector(".timeline-replies")
 
                 if timeline_element:
-                    # 获取 innerHTML 解析当前页/总页数，格式为 "当前 / 总数"
-                    inner_html = await timeline_element.inner_html()
-                    print(f"✅ {self.username}: Topic {current_topic_id} - " f"Progress: {inner_html.strip()}")
+                    # 获取 innerText 解析当前页/总页数，格式为 "当前 / 总数"
+                    inner_text = await timeline_element.inner_text()
+                    print(f"✅ {self.username}: Topic {current_topic_id} - " f"Progress: {inner_text.strip()}")
 
                     # 解析页数信息并滚动浏览
                     try:
-                        parts = inner_html.strip().split("/")
-                        if len(parts) == 2:
+                        parts = inner_text.strip().split("/")
+                        if len(parts) == 2 and parts[0].strip().isdigit() and parts[1].strip().isdigit():
                             current_page = int(parts[0].strip())
                             total_pages = int(parts[1].strip())
+
+                            # 有效帖子，重置无效计数
+                            invalid_count = 0
 
                             if current_page < total_pages:
                                 print(
@@ -281,18 +292,22 @@ class LinuxDoReadPosts:
                                 remaining_read_count = max_posts - read_count
                                 print(f"ℹ️ {self.username}: {read_count} read, {remaining_read_count} remaining...")
                         else:
-                            print(f"ℹ️ {self.username}: Timeline read error(content: {inner_html}), continue")
+                            print(f"ℹ️ {self.username}: Timeline read error(content: {inner_text}), continue")
+                            invalid_count += 1
                             continue
                     except (ValueError, IndexError) as e:
                         print(f"⚠️ {self.username}: Failed to parse progress: {e}")
+                        invalid_count += 1
 
                     # 模拟阅读后等待
                     await page.wait_for_timeout(random.randint(1000, 2000))
                 else:
                     print(f"ℹ️ {self.username}: Topic {current_topic_id} not found or invalid, skipping...")
+                    invalid_count += 1
 
             except Exception as e:
                 print(f"⚠️ {self.username}: Error reading topic {current_topic_id}: {e}")
+                invalid_count += 1
 
         # 保存当前 topic_id 到缓存
         self._save_topic_id(current_topic_id)
@@ -323,10 +338,10 @@ class LinuxDoReadPosts:
                 print(f"ℹ️ {self.username}: Timeline element not found, stopping")
                 break
 
-            inner_html = await timeline_element.inner_html()
+            inner_html = await timeline_element.inner_text()
             try:
                 parts = inner_html.strip().split("/")
-                if len(parts) == 2:
+                if len(parts) == 2 and parts[0].strip().isdigit() and parts[1].strip().isdigit():
                     current_page = int(parts[0].strip())
                     total_pages = int(parts[1].strip())
 
