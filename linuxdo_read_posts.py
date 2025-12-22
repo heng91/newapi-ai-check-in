@@ -17,8 +17,8 @@ from utils.notify import notify
 # 默认缓存目录，与 checkin.py 保持一致
 DEFAULT_STORAGE_STATE_DIR = "storage-states"
 
-# 帖子起始 ID，从环境变量获取，默认 1000000
-DEFAULT_BASE_TOPIC_ID = 1000000
+# 帖子起始 ID，从环境变量获取，默认 随机从100000-1100000选一个
+DEFAULT_BASE_TOPIC_ID = random.randint(1000000, 1100000)
 
 # 帖子 ID 缓存目录
 TOPIC_ID_CACHE_DIR = "linuxdo_reads"
