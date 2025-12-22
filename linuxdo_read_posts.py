@@ -199,7 +199,11 @@ class LinuxDoReadPosts:
         try:
             if os.path.exists(self.topic_id_cache_file):
                 with open(self.topic_id_cache_file, "r", encoding="utf-8") as f:
-                    return int(f.read().strip())
+                    content = f.read().strip()
+                    if content:
+                        return int(content)
+                    else:
+                        print(f"⚠️ {self.username}: Failed to load topic ID from cache, content is empty")
         except (ValueError, IOError) as e:
             print(f"⚠️ {self.username}: Failed to load topic ID from cache: {e}")
         return 0
