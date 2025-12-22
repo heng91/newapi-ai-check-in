@@ -217,10 +217,10 @@ class LinuxDoReadPosts:
         except IOError as e:
             print(f"⚠️ {self.username}: Failed to save topic ID: {e}")
 
-    async def _read_posts(self, page, base_topic_id: int, max_posts: int = 10) -> int:
+    async def _read_posts(self, page, base_topic_id: int, max_posts: int) -> int:
         """浏览帖子
 
-        从 base_topic_id 开始，随机向上加 1-10 打开链接，
+        从 base_topic_id 开始，随机向上加 1-5 打开链接，
         查找 class timeline-replies 标签判断帖子是否有效。
         根据剩余可读数量自动滚动浏览。
 
@@ -245,14 +245,14 @@ class LinuxDoReadPosts:
         read_count = 0
 
         while read_count < max_posts:
-            # 随机向上加 1-10
-            current_topic_id += random.randint(1, 10)
+            # 随机向上加 1-5
+            current_topic_id += random.randint(1, 5)
             topic_url = f"https://linux.do/t/topic/{current_topic_id}"
 
             try:
-                print(f"ℹ️ {self.username}: Opening topic {current_topic_id}({read_count}/{max_posts})...")
+                print(f"ℹ️ {self.username}: Opening topic {current_topic_id}...")
                 await page.goto(topic_url, wait_until="domcontentloaded")
-                await page.wait_for_timeout(10000)
+                await page.wait_for_timeout(3000)
 
                 # 查找 timeline-replies 标签
                 timeline_element = await page.query_selector(".timeline-replies")
@@ -276,13 +276,15 @@ class LinuxDoReadPosts:
                                 )
                                 # 自动滚动浏览剩余内容
                                 await self._scroll_to_read(page)
+
+                                read_count += total_pages - current_page
+                                remaining_read_count = max_posts - read_count
+                                print(f"ℹ️ {self.username}: {read_count} read, {remaining_read_count} remaining...")
                         else:
                             print(f"ℹ️ {self.username}: Timeline read error(content: {inner_html}), continue")
                             continue
                     except (ValueError, IndexError) as e:
                         print(f"⚠️ {self.username}: Failed to parse progress: {e}")
-
-                    read_count += 1
 
                     # 模拟阅读后等待
                     await page.wait_for_timeout(random.randint(1000, 2000))
@@ -349,11 +351,11 @@ class LinuxDoReadPosts:
             except (ValueError, IndexError):
                 pass
 
-    async def run(self, max_posts: int = 10) -> tuple[bool, dict]:
+    async def run(self, max_posts: int = 100) -> tuple[bool, dict]:
         """执行浏览帖子任务
 
         Args:
-            max_posts: 最大浏览帖子数，默认 10
+            max_posts: 最大浏览帖子数，默认 100
 
         Returns:
             (成功标志, 结果信息字典)
@@ -509,15 +511,28 @@ async def main():
             password=account["password"],
         )
 
-        success, result = await reader.run()
-        print(f"Result: success={success}, result={result}")
+        start_time = datetime.now()
+        success, result = await reader.run(random.randint(50, 100))
+        end_time = datetime.now()
+        duration = end_time - start_time
+
+        # 格式化时长为 HH:MM:SS
+        total_seconds = int(duration.total_seconds())
+        hours, remainder = divmod(total_seconds, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        duration_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+        print(f"Result: success={success}, result={result}, duration={duration_str}")
 
         # 记录结果
-        results.append({
-            "username": account["username"],
-            "success": success,
-            "result": result,
-        })
+        results.append(
+            {
+                "username": account["username"],
+                "success": success,
+                "result": result,
+                "duration": duration_str,
+            }
+        )
 
     # 发送通知
     if results:
@@ -526,18 +541,25 @@ async def main():
             "",
         ]
 
+        total_read_count = 0
         for r in results:
             username = r["username"]
+            duration = r["duration"]
             if r["success"]:
+                read_count = r["result"].get("read_count", 0)
+                total_read_count += read_count
                 last_topic_id = r["result"].get("last_topic_id", "unknown")
                 topic_url = f"https://linux.do/t/topic/{last_topic_id}"
                 notification_lines.append(
-                    f"✅ {username}: Read completed\n"
-                    f"   Last topic: {topic_url}"
+                    f"✅ {username}: Read {read_count} posts ({duration})\n" f"   Last topic: {topic_url}"
                 )
             else:
                 error = r["result"].get("error", "Unknown error")
-                notification_lines.append(f"❌ {username}: {error}")
+                notification_lines.append(f"❌ {username}: {error} ({duration})")
+
+        # 添加阅读总数
+        notification_lines.append("")
+        notification_lines.append(f"📊 Total read: {total_read_count} posts")
 
         notify_content = "\n".join(notification_lines)
         notify.push_message("Linux.do Read Posts", notify_content, msg_type="text")
