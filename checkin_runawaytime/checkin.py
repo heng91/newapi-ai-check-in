@@ -14,6 +14,87 @@ from utils.http_utils import proxy_resolve, response_resolve
 from topup import topup
 
 
+def get_user_info(
+    account_name: str,
+    headers: dict,
+    cookies: dict,
+    proxy: httpx.URL | None = None,
+) -> dict:
+    """获取用户信息（余额）
+
+    Args:
+        account_name: 账号名称（用于日志）
+        headers: 请求头
+        cookies: cookies 字典
+        proxy: 代理配置（可选）
+
+    Returns:
+        包含 success 和 quota/used_quota 或 error 的字典
+    """
+    client = httpx.Client(http2=True, timeout=30.0, proxy=proxy)
+    try:
+        # 设置 cookies
+        client.cookies.update(cookies)
+
+        # 构建请求头
+        user_info_headers = headers.copy()
+        user_info_headers.update({
+            "Accept": "application/json, text/plain, */*",
+            "Cache-Control": "no-store",
+            "Pragma": "no-cache",
+        })
+
+        response = client.get(
+            "https://runanytime.hxi.me/api/user/self",
+            headers=user_info_headers,
+            timeout=30,
+        )
+
+        if response.status_code == 200:
+            json_data = response_resolve(response, "get_user_info", account_name)
+            if json_data is None:
+                return {
+                    "success": False,
+                    "error": "Failed to get user info: Invalid response type (saved to logs)",
+                }
+
+            if json_data.get("success"):
+                user_data = json_data.get("data", {})
+                quota = round(user_data.get("quota", 0) / 500000, 2)
+                used_quota = round(user_data.get("used_quota", 0) / 500000, 2)
+                print(
+                    f"✅ {account_name}: User info - "
+                    f"Current Balance: ${quota}, Used: ${used_quota}"
+                )
+                return {
+                    "success": True,
+                    "quota": quota,
+                    "used_quota": used_quota,
+                    "display": f"Current Balance: ${quota}, Used: ${used_quota}",
+                }
+            else:
+                error_msg = json_data.get("message", "Unknown error")
+                print(f"❌ {account_name}: Get user info failed - {error_msg}")
+                return {
+                    "success": False,
+                    "error": f"Get user info failed: {error_msg}",
+                }
+        else:
+            print(f"❌ {account_name}: Get user info failed - HTTP {response.status_code}")
+            return {
+                "success": False,
+                "error": f"Get user info failed: HTTP {response.status_code}",
+            }
+    except Exception as e:
+        print(f"❌ {account_name}: Get user info error - {e}")
+        return {
+            "success": False,
+            "error": f"Get user info failed: {e}",
+        }
+    finally:
+        client.close()
+
+
 class CheckIn:
     """runawaytime 签到管理类"""
 
@@ -202,7 +283,7 @@ class CheckIn:
 
     def execute_wheel(
         self, client: httpx.Client, headers: dict, fuli_cookies: dict
-    ) -> tuple[bool, str, str]:
+    ) -> tuple[bool, str, int]:
         """执行大转盘抽奖
 
         Args:
@@ -211,7 +292,7 @@ class CheckIn:
             fuli_cookies: fuli.hxi.me 站点的 cookies
 
         Returns:
-            (是否成功, code, prize)
+            (是否成功, code, remaining)
         """
         print(f"🎡 {self.account_name}: Executing wheel spin")
 
@@ -241,31 +322,30 @@ class CheckIn:
             json_data = response_resolve(response, "execute_wheel", self.account_name)
             if json_data is None:
                 print(f"❌ {self.account_name}: Wheel failed - Invalid response format")
-                return False, "", ""
+                return False, "", 0
 
             message = json_data.get("message", json_data.get("msg", ""))
 
             if json_data.get("success"):
                 code = json_data.get("code", "")
-                prize = json_data.get("prize", "")
                 remaining = json_data.get("remaining", 0)
                 expire_seconds = json_data.get("expireSeconds", 0)
                 print(
                     f"✅ {self.account_name}: Wheel successful! "
-                    f"Prize: {prize}, Code: {code}, Remaining: {remaining}, Expires in: {expire_seconds}s"
+                    f"Code: {code}, Remaining: {remaining}, Expires in: {expire_seconds}s"
                 )
-                return True, code, prize
+                return True, code, remaining
 
             if "already" in message.lower() or "已经" in message or "次数" in message:
                 print(f"✅ {self.account_name}: No wheel spins remaining!")
-                return True, "", ""
+                return True, "", 0
 
             error_msg = message if message else "Unknown error"
             print(f"❌ {self.account_name}: Wheel failed - {error_msg}")
-            return False, "", ""
+            return False, "", 0
 
         print(f"❌ {self.account_name}: Wheel failed - HTTP {response.status_code}")
-        return False, "", ""
+        return False, "", 0
 
     async def execute(
         self, fuli_cookies: dict, cookies: dict, api_user: str | int
@@ -310,11 +390,12 @@ class CheckIn:
                 "topup": False,
                 "wheel": False,
                 "wheel_count": 0,
-                "wheel_prizes": [],
-                "failed_keys": [],  # 收集失败的 keys 用于通知
-                "code": ""
+                "wheel_topup_success_count": 0,  # wheel topup 成功次数
+                "quota": 0,
+                "used_quota": 0,
+                "display": "",  # 最终显示信息
             }
-            code = ""
+            errors = []  # 收集错误信息（局部变量，不返回）
             topup_count = 0  # 记录 topup 次数，用于判断是否需要等待
 
             # Step 1: 检查签到状态
@@ -327,10 +408,11 @@ class CheckIn:
                 # Step 2: 执行签到，获取 code
                 checkin_success, code = self.execute_checkin(client, headers, fuli_cookies)
                 results["checkin"] = checkin_success
-                results["code"] = code
+                if not checkin_success:
+                    errors.append("Checkin failed")
 
                 # Step 3: 执行 topup (使用 cookies、api_user 和 code)
-                if code:
+                if checkin_success and code:
                     print(f"💰 {self.account_name}: Executing topup with code: {code}")
                     # 构建 topup 请求头
                     topup_headers = headers.copy()
@@ -349,9 +431,9 @@ class CheckIn:
                     )
                     results["topup"] = topup_result.get("success", False)
                     if not topup_result.get("success") and not topup_result.get("already_used"):
-                        results["failed_keys"].append(code)
+                        errors.append(topup_result.get("error", "Topup failed"))
                     topup_count += 1
-                else:
+                elif checkin_success:
                     print(f"⚠️ {self.account_name}: No code available, skipping topup")
                     results["topup"] = True  # 没有 code 时跳过，不算失败
             else:
@@ -364,8 +446,8 @@ class CheckIn:
 
             if wheel_status_success and remaining > 0:
                 print(f"🎡 {self.account_name}: {remaining} wheel spins available")
-                results["wheel"] = True
                 wheel_success_count = 0
+                wheel_fail_count = 0
 
                 while remaining > 0:
                     # 如果之前有 topup，等待 60 秒防止快速请求被拒
@@ -373,13 +455,11 @@ class CheckIn:
                         print(f"⏳ {self.account_name}: Waiting 60 seconds before next request...")
                         await asyncio.sleep(60)
 
-                    # 执行大转盘
-                    wheel_success, wheel_code, prize = self.execute_wheel(client, headers, fuli_cookies)
+                    # 执行大转盘，返回值包含 remaining
+                    wheel_success, wheel_code, remaining = self.execute_wheel(client, headers, fuli_cookies)
 
                     if wheel_success and wheel_code:
                         results["wheel_count"] += 1
-                        if prize:
-                            results["wheel_prizes"].append(prize)
 
                         # 执行 topup
                         print(f"💰 {self.account_name}: Executing topup with wheel code: {wheel_code}")
@@ -402,28 +482,71 @@ class CheckIn:
 
                         if wheel_topup_result.get("success"):
                             wheel_success_count += 1
+                            results["wheel_topup_success_count"] += 1
                         else:
                             print(f"⚠️ {self.account_name}: Wheel topup failed for code: {wheel_code}")
                             if not wheel_topup_result.get("already_used"):
-                                results["failed_keys"].append(wheel_code)
-
-                        # 更新剩余次数
-                        _, remaining = self.get_wheel_status(client, headers, fuli_cookies)
+                                errors.append(wheel_topup_result.get("error", "Wheel topup failed"))
+                        # remaining 已经从 execute_wheel 返回值中获取，无需再次调用 get_wheel_status
                     elif wheel_success:
                         # 成功但没有 code，说明没有剩余次数了
                         break
                     else:
-                        # 失败，退出循环
-                        results["wheel"] = False
-                        break
+                        # 失败，记录失败次数但继续尝试（允许部分失败）
+                        wheel_fail_count += 1
+                        print(f"⚠️ {self.account_name}: Wheel spin failed, continuing...")
+                        # 如果连续失败太多次，退出循环避免无限重试
+                        if wheel_fail_count >= 3:
+                            print(f"❌ {self.account_name}: Too many wheel failures, stopping")
+                            break
 
-                print(f"🎡 {self.account_name}: Wheel completed, {wheel_success_count} successful spins")
+                # 只要有成功的就算成功
+                results["wheel"] = wheel_success_count > 0 or wheel_fail_count == 0
+                print(f"🎡 {self.account_name}: Wheel completed, {wheel_success_count} successful spins, {wheel_fail_count} failed")
             else:
                 print(f"ℹ️ {self.account_name}: No wheel spins available")
                 results["wheel"] = True  # 没有次数不算失败
 
+            # Step 5: 获取用户余额信息
+            print(f"💰 {self.account_name}: Getting user balance info")
+            user_info_headers = headers.copy()
+            user_info_headers.update({
+                "Referer": "https://runanytime.hxi.me/console",
+                "Origin": "https://runanytime.hxi.me",
+                "new-api-user": f"{api_user}",
+            })
+            user_info_result = get_user_info(
+                account_name=self.account_name,
+                headers=user_info_headers,
+                cookies=cookies,
+                proxy=self.http_proxy_config,
+            )
+            if user_info_result.get("success"):
+                results["quota"] = user_info_result.get("quota", 0)
+                results["used_quota"] = user_info_result.get("used_quota", 0)
+            else:
+                # 获取用户信息失败，添加错误信息
+                error_msg = user_info_result.get("error", "Get user info failed")
+                errors.append(error_msg)
+
             # 判断整体是否成功
             overall_success = results["checkin"] and results["topup"] and results["wheel"]
+
+            # 构建 display 字符串（只包含余额信息和错误信息，状态信息由 main.py 构建）
+            display_parts = []
+            
+            # 添加余额信息
+            if user_info_result.get("success"):
+                balance_display = user_info_result.get("display", "")
+                if balance_display:
+                    display_parts.append(f"💵 {balance_display}")
+            
+            # 拼接 errors（如果有）
+            if errors:
+                errors_str = '; '.join(errors)
+                display_parts.append(f"❗ Errors: {errors_str}")
+            
+            results["display"] = "\n".join(display_parts) if display_parts else ""
 
             if overall_success:
                 print(f"✅ {self.account_name}: All tasks completed successfully")
@@ -441,6 +564,9 @@ class CheckIn:
 
         except Exception as e:
             print(f"❌ {self.account_name}: Error occurred during check-in process - {e}")
-            return False, {"error": f"Check-in process error: {str(e)}"}
+            # 返回完整的 results 格式，保留已完成的部分任务状态
+            errors.append(f"An error occurred during the check-in process: {str(e)}")
+            results["display"] = "\n".join(errors)
+            return False, results
         finally:
             client.close()

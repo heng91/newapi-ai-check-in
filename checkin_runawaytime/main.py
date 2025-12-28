@@ -108,14 +108,17 @@ def save_balance_hash(balance_hash: str) -> None:
 
 
 def generate_balance_hash(checkin_results: dict) -> str:
-    """生成所有账号签到结果的总 hash"""
+    """生成所有账号余额的总 hash，基于 quota 和 used_quota"""
     if not checkin_results:
         return ""
 
     all_results = {}
     for account_key, checkin_info in checkin_results.items():
         if checkin_info:
-            all_results[account_key] = str(checkin_info.get("checkin", False))
+            # 使用 quota 和 used_quota 生成 hash
+            quota = checkin_info.get("quota", 0)
+            used_quota = checkin_info.get("used_quota", 0)
+            all_results[account_key] = f"{quota}:{used_quota}"
 
     results_json = json.dumps(all_results, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(results_json.encode("utf-8")).hexdigest()[:16]
@@ -181,47 +184,49 @@ async def main():
 
             if success:
                 success_count += 1
-                wheel_count = results.get('wheel_count', 0)
-                wheel_prizes = results.get('wheel_prizes', [])
-                prizes_str = ', '.join(wheel_prizes) if wheel_prizes else 'N/A'
                 print(f"✅ {account_name}: All check-in tasks completed")
-                notification_content.append(
+                # 构建状态行
+                wheel_count = results.get('wheel_count', 0)
+                wheel_topup_success = results.get('wheel_topup_success_count', 0)
+                status_line = (
                     f"✅ {account_name}: "
                     f"📝 Checkin: {'✓' if results.get('checkin') else '✗'} | "
                     f"💰 Topup: {'✓' if results.get('topup') else '✗'} | "
                     f"🎡 Wheel: {'✓' if results.get('wheel') else '✗'} ({wheel_count}) | "
-                    f"🎁 Prizes: {prizes_str}"
+                    f"🎁 Wheel Topup: {wheel_topup_success}/{wheel_count}"
                 )
+                # 添加 display 信息（如果有）
+                display = results.get('display', '')
+                if display:
+                    notification_content.append(f"{status_line}\n{display}")
+                else:
+                    notification_content.append(status_line)
             else:
-                # 部分成功也记录
-                checkin_status = '✓' if results.get('checkin') else '✗'
-                topup_status = '✓' if results.get('topup') else '✗'
-                wheel_status = '✓' if results.get('wheel') else '✗'
+                # 部分成功或失败
                 wheel_count = results.get('wheel_count', 0)
-                wheel_prizes = results.get('wheel_prizes', [])
-                failed_keys = results.get('failed_keys', [])
-                prizes_str = ', '.join(wheel_prizes) if wheel_prizes else 'N/A'
-                failed_keys_str = ', '.join(failed_keys) if failed_keys else ''
-
+                wheel_topup_success = results.get('wheel_topup_success_count', 0)
                 if results.get('checkin') or results.get('topup') or results.get('wheel'):
                     print(f"⚠️ {account_name}: Partial success")
-                    msg = (
+                    status_line = (
                         f"⚠️ {account_name}: "
-                        f"📝 Checkin: {checkin_status} | "
-                        f"💰 Topup: {topup_status} | "
-                        f"🎡 Wheel: {wheel_status} ({wheel_count}) | "
-                        f"🎁 Prizes: {prizes_str}"
+                        f"📝 Checkin: {'✓' if results.get('checkin') else '✗'} | "
+                        f"💰 Topup: {'✓' if results.get('topup') else '✗'} | "
+                        f"🎡 Wheel: {'✓' if results.get('wheel') else '✗'} | "
+                        f"🎁 Wheel Topup: {wheel_topup_success}/{wheel_count}"
                     )
-                    if failed_keys_str:
-                        msg += f"\n🔑 Failed Keys: {failed_keys_str}"
-                    notification_content.append(msg)
+                    display = results.get('display', '')
+                    if display:
+                        notification_content.append(f"{status_line}\n{display}")
+                    else:
+                        notification_content.append(status_line)
                 else:
                     print(f"❌ {account_name}: Check-in failed")
-                    error_msg = results.get("error", "Unknown error")
-                    msg = f"❌ {account_name}: {error_msg}"
-                    if failed_keys_str:
-                        msg += f"\n🔑 Failed Keys: {failed_keys_str}"
-                    notification_content.append(msg)
+                    # errors 已经包含在 display 中
+                    display = results.get('display', '')
+                    if display:
+                        notification_content.append(f"❌ {account_name}:\n{display}")
+                    else:
+                        notification_content.append(f"❌ {account_name}: Unknown error")
 
         except Exception as e:
             print(f"❌ {account_name} processing exception: {e}")
