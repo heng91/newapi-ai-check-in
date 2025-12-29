@@ -432,6 +432,10 @@ class CheckIn:
                     results["topup"] = topup_result.get("success", False)
                     if not topup_result.get("success") and not topup_result.get("already_used"):
                         errors.append(topup_result.get("error", "Topup failed"))
+                        # topup 失败时直接返回，不继续执行 wheel
+                        print(f"❌ {self.account_name}: Checkin topup failed, stopping")
+                        results["display"] = "\n".join([f"❗ Errors: {'; '.join(errors)}"])
+                        return False, results
                     topup_count += 1
                 elif checkin_success:
                     print(f"⚠️ {self.account_name}: No code available, skipping topup")
@@ -487,6 +491,9 @@ class CheckIn:
                             print(f"⚠️ {self.account_name}: Wheel topup failed for code: {wheel_code}")
                             if not wheel_topup_result.get("already_used"):
                                 errors.append(wheel_topup_result.get("error", "Wheel topup failed"))
+                                # topup 失败时退出循环，避免浪费 wheel code
+                                print(f"❌ {self.account_name}: Topup failed, stopping wheel spins")
+                                break
                         # remaining 已经从 execute_wheel 返回值中获取，无需再次调用 get_wheel_status
                     elif wheel_success:
                         # 成功但没有 code，说明没有剩余次数了
@@ -565,8 +572,7 @@ class CheckIn:
         except Exception as e:
             print(f"❌ {self.account_name}: Error occurred during check-in process - {e}")
             # 返回完整的 results 格式，保留已完成的部分任务状态
-            errors.append(f"An error occurred during the check-in process: {str(e)}")
-            results["display"] = "\n".join(errors)
+            results["display"] = "\n".join([f"❗ An error occurred during the check-in process: {'; '.join(errors)}"])
             return False, results
         finally:
             client.close()
