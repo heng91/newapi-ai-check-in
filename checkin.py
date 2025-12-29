@@ -3,17 +3,19 @@
 CheckIn 类
 """
 
+import asyncio
 import json
 import hashlib
 import os
 import tempfile
-from datetime import datetime
 from urllib.parse import urlparse
 
 import httpx
 from camoufox.async_api import AsyncCamoufox
 from utils.config import AccountConfig, ProviderConfig
-from utils.browser_utils import parse_cookies, get_random_user_agent
+from utils.browser_utils import parse_cookies, get_random_user_agent, take_screenshot, aliyun_captcha_check
+from utils.http_utils import proxy_resolve, response_resolve
+from utils.topup import topup
 
 
 class CheckIn:
@@ -41,190 +43,12 @@ class CheckIn:
         # 代理优先级: 账号配置 > 全局配置
         self.camoufox_proxy_config = account_config.proxy if account_config.proxy else global_proxy
         # httpx.Client proxy 转换
-        self.http_proxy_config = self._get_http_proxy(self.camoufox_proxy_config)
+        self.http_proxy_config = proxy_resolve(self.camoufox_proxy_config)
 
         # storage-states 目录
         self.storage_state_dir = storage_state_dir
 
         os.makedirs(self.storage_state_dir, exist_ok=True)
-
-    @staticmethod
-    def _get_http_proxy(proxy_config: dict | None = None) -> httpx.URL | None:
-        """将 proxy_config 转换为 httpx.URL 格式的代理 URL
-
-        proxy_config 格式:
-        {
-            'server': 'http://example.com:8080',
-            'username': 'username',
-            'password': 'password'
-        }
-
-        Returns:
-            httpx.URL 格式的代理对象，如果没有配置代理则返回 None
-        """
-        if not proxy_config:
-            return None
-
-        # proxy_config 是字典格式，提取 server 字段
-        proxy_url = proxy_config.get("server")
-        if not proxy_url:
-            return None
-
-        # 如果有用户名和密码，将其嵌入到 URL 中
-        username = proxy_config.get("username")
-        password = proxy_config.get("password")
-
-        if username and password:
-            # 解析原始 URL
-            parsed = httpx.URL(proxy_url)
-            # 重新构建包含认证信息的 URL
-            return parsed.copy_with(username=username, password=password)
-
-        # 转换为 httpx.URL 对象
-        return httpx.URL(proxy_url)
-
-    def _check_and_handle_response(self, response: httpx.Response, context: str = "response") -> dict | None:
-        """检查响应类型，如果是 HTML 则保存为文件，否则返回 JSON 数据
-
-        Args:
-            response: httpx Response 对象
-            context: 上下文描述，用于生成文件名
-
-        Returns:
-            JSON 数据字典，如果响应是 HTML 则返回 None
-        """
-
-        # 创建 logs 目录
-        logs_dir = "logs"
-        os.makedirs(logs_dir, exist_ok=True)
-
-        # 如果是 JSON，正常解析
-        try:
-            return response.json()
-        except json.JSONDecodeError as e:
-            print(f"❌ {self.account_name}: Failed to parse JSON response: {e}")
-
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            safe_context = "".join(c if c.isalnum() else "_" for c in context)
-
-            content_type = response.headers.get("content-type", "").lower()
-
-            # 检查是否是 HTML 响应
-            if "text/html" in content_type or "text/plain" in content_type:
-                # 保存 HTML 内容到文件
-                filename = f"{self.safe_account_name}_{timestamp}_{safe_context}.html"
-                filepath = os.path.join(logs_dir, filename)
-
-                with open(filepath, "w", encoding="utf-8") as f:
-                    f.write(response.text)
-
-                print(f"⚠️ {self.account_name}: Received HTML response, saved to: {filepath}")
-            else:
-                # 即使不是 HTML，如果 JSON 解析失败，也保存原始内容
-                filename = f"{self.safe_account_name}_{timestamp}_{safe_context}_invalid.txt"
-                filepath = os.path.join(logs_dir, filename)
-
-                with open(filepath, "w", encoding="utf-8") as f:
-                    f.write(response.text)
-
-                print(f"⚠️ {self.account_name}: Invalid response saved to: {filepath}")
-            return None
-        except Exception as e:
-            print(f"❌ {self.account_name}: Error occurred while checking and handling response: {e}")
-            return None
-
-    async def _take_screenshot(self, page, reason: str) -> None:
-        """截取当前页面的屏幕截图
-
-        Args:
-            page: Camoufox 页面对象
-            reason: 截图原因描述
-        """
-        try:
-            # 创建 screenshots 目录
-            screenshots_dir = "screenshots"
-            os.makedirs(screenshots_dir, exist_ok=True)
-
-            # 生成文件名: 账号名_时间戳_原因.png
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            safe_reason = "".join(c if c.isalnum() else "_" for c in reason)
-            filename = f"{self.safe_account_name}_{timestamp}_{safe_reason}.png"
-            filepath = os.path.join(screenshots_dir, filename)
-
-            await page.screenshot(path=filepath, full_page=True)
-            print(f"📸 {self.account_name}: Screenshot saved to {filepath}")
-        except Exception as e:
-            print(f"⚠️ {self.account_name}: Failed to take screenshot: {e}")
-
-    async def _aliyun_captcha_check(self, page) -> bool:
-        """阿里云验证码检查"""
-
-        # 检查是否有 traceid (阿里云验证码页面)
-        try:
-            traceid = await page.evaluate(
-                """() => {
-                const traceElement = document.getElementById('traceid');
-                if (traceElement) {
-                    const text = traceElement.innerText || traceElement.textContent;
-                    const match = text.match(/TraceID:\\s*([a-f0-9]+)/i);
-                    return match ? match[1] : null;
-                }
-                return null;
-            }"""
-            )
-
-            if traceid:
-                print(f"⚠️ {self.account_name}: Aliyun captcha detected, " f"traceid: {traceid}")
-                try:
-                    await page.wait_for_selector("#nocaptcha", timeout=60000)
-
-                    slider_element = await page.query_selector("#nocaptcha .nc_scale")
-                    if slider_element:
-                        slider = await slider_element.bounding_box()
-                        print(f"ℹ️ {self.account_name}: Slider bounding box: {slider}")
-
-                    slider_handle = await page.query_selector("#nocaptcha .btn_slide")
-                    if slider_handle:
-                        handle = await slider_handle.bounding_box()
-                        print(f"ℹ️ {self.account_name}: Slider handle bounding box: {handle}")
-
-                    if slider and handle:
-                        await self._take_screenshot(page, "aliyun_captcha_slider_start")
-
-                        await page.mouse.move(
-                            handle.get("x") + handle.get("width") / 2,
-                            handle.get("y") + handle.get("height") / 2,
-                        )
-                        await page.mouse.down()
-                        await page.mouse.move(
-                            handle.get("x") + slider.get("width"),
-                            handle.get("y") + handle.get("height") / 2,
-                            steps=2,
-                        )
-                        await page.mouse.up()
-                        await self._take_screenshot(page, "aliyun_captcha_slider_completed")
-
-                        # Wait for page to be fully loaded
-                        await page.wait_for_timeout(20000)
-
-                        await self._take_screenshot(page, "aliyun_captcha_slider_result")
-                        return True
-                    else:
-                        print(f"❌ {self.account_name}: Slider or handle not found")
-                        await self._take_screenshot(page, "aliyun_captcha_error")
-                        return False
-                except Exception as e:
-                    print(f"❌ {self.account_name}: Error occurred while moving slider, {e}")
-                    await self._take_screenshot(page, "aliyun_captcha_error")
-                    return False
-            else:
-                print(f"ℹ️ {self.account_name}: No traceid found")
-                await self._take_screenshot(page, "aliyun_captcha_traceid_found")
-                return True
-        except Exception as e:
-            print(f"❌ {self.account_name}: Error occurred while getting traceid, {e}")
-            await self._take_screenshot(page, "aliyun_captcha_error")
-            return False
 
     async def get_waf_cookies_with_browser(self) -> dict | None:
         """使用 Camoufox 获取 WAF cookies（隐私模式）"""
@@ -255,7 +79,7 @@ class CheckIn:
                         await page.wait_for_timeout(3000)
 
                     if self.provider_config.aliyun_captcha:
-                        captcha_check = await self._aliyun_captcha_check(page)
+                        captcha_check = await aliyun_captcha_check(page, self.account_name)
                         if captcha_check:
                             await page.wait_for_timeout(3000)
 
@@ -488,7 +312,7 @@ class CheckIn:
                         await page.wait_for_timeout(3000)
 
                     if self.provider_config.aliyun_captcha:
-                        captcha_check = await self._aliyun_captcha_check(page)
+                        captcha_check = await aliyun_captcha_check(page, self.account_name)
                         if captcha_check:
                             await page.wait_for_timeout(3000)
 
@@ -527,7 +351,7 @@ class CheckIn:
             response = client.get(self.provider_config.get_status_url(), headers=headers, timeout=30)
 
             if response.status_code == 200:
-                data = self._check_and_handle_response(response, f"get_auth_client_id_{provider}")
+                data = response_resolve(response, f"get_auth_client_id_{provider}", self.account_name)
                 if data is None:
 
                     # 尝试从浏览器 localStorage 获取状态
@@ -626,7 +450,7 @@ class CheckIn:
                         await page.wait_for_timeout(3000)
 
                     if self.provider_config.aliyun_captcha:
-                        captcha_check = await self._aliyun_captcha_check(page)
+                        captcha_check = await aliyun_captcha_check(page, self.account_name)
                         if captcha_check:
                             await page.wait_for_timeout(3000)
 
@@ -657,7 +481,7 @@ class CheckIn:
 
                 except Exception as e:
                     print(f"❌ {self.account_name}: Failed to get state, {e}")
-                    await self._take_screenshot(page, "auth_url_error")
+                    await take_screenshot(page, "auth_url_error", self.account_name)
                     return {"success": False, "error": "Failed to get state"}
                 finally:
                     await page.close()
@@ -672,7 +496,7 @@ class CheckIn:
             response = client.get(self.provider_config.get_auth_state_url(), headers=headers, timeout=30)
 
             if response.status_code == 200:
-                json_data = self._check_and_handle_response(response, "get_auth_state")
+                json_data = response_resolve(response, "get_auth_state", self.account_name)
                 if json_data is None:
                     # 尝试从浏览器 localStorage 获取状态
                     # print(f"ℹ️ {self.account_name}: Getting auth state from browser")
@@ -786,7 +610,7 @@ class CheckIn:
                         await page.wait_for_timeout(3000)
 
                     if self.provider_config.aliyun_captcha:
-                        captcha_check = await self._aliyun_captcha_check(page)
+                        captcha_check = await aliyun_captcha_check(page, self.account_name)
                         if captcha_check:
                             await page.wait_for_timeout(3000)
 
@@ -825,7 +649,7 @@ class CheckIn:
 
                 except Exception as e:
                     print(f"❌ {self.account_name}: Failed to get user info, {e}")
-                    await self._take_screenshot(page, "user_info_error")
+                    await take_screenshot(page, "user_info_error", self.account_name)
                     return {"success": False, "error": "Failed to get user info"}
                 finally:
                     await page.close()
@@ -836,7 +660,7 @@ class CheckIn:
             response = client.get(self.provider_config.get_user_info_url(), headers=headers, timeout=30)
 
             if response.status_code == 200:
-                json_data = self._check_and_handle_response(response, "get_user_info")
+                json_data = response_resolve(response, "get_user_info", self.account_name)
                 if json_data is None:
                     # 尝试从浏览器获取用户信息
                     # print(f"ℹ️ {self.account_name}: Getting user info from browser")
@@ -904,7 +728,7 @@ class CheckIn:
 
         # 尝试解析响应（200 或 400 都可能包含有效的 JSON）
         if response.status_code in [200, 400]:
-            json_data = self._check_and_handle_response(response, "execute_check_in")
+            json_data = response_resolve(response, "execute_check_in", self.account_name)
             if json_data is None:
                 # 如果不是 JSON 响应（可能是 HTML），检查是否包含成功标识
                 if "success" in response.text.lower():
@@ -932,6 +756,119 @@ class CheckIn:
         else:
             print(f"❌ {self.account_name}: Check-in failed - HTTP {response.status_code}")
             return False
+
+    async def execute_topup(
+        self,
+        headers: dict,
+        cookies: dict,
+        api_user: str | int,
+        topup_interval: int = 60,
+    ) -> dict:
+        """执行完整的 CDK 获取和充值流程
+
+        使用迭代器方式分步获取 CDK，每个 get_cdk 函数返回的 CDK 列表逐个执行 topup
+        每次 topup 之间保持间隔时间，如果 topup 失败则停止
+
+        Args:
+            headers: 请求头
+            cookies: cookies 字典
+            api_user: API 用户 ID（通过参数传递，因为登录方式可能不同）
+            topup_interval: 多次 topup 之间的间隔时间（秒），默认 60 秒
+
+        Returns:
+            包含 success, topup_count, errors 等信息的字典
+        """
+        http_proxy = proxy_resolve(self.camoufox_proxy_config)
+
+        # 获取 topup URL
+        topup_url = self.provider_config.get_topup_url()
+        if not topup_url:
+            print(f"❌ {self.account_name}: No topup URL configured for provider {self.provider_config.name}")
+            return {
+                "success": False,
+                "topup_count": 0,
+                "errors": ["No topup URL configured"],
+            }
+
+        # 构建 topup 请求头
+        topup_headers = headers.copy()
+        topup_headers.update({
+            "Referer": f"{self.provider_config.origin}/console/topup",
+            "Origin": self.provider_config.origin,
+            self.provider_config.api_user_key: f"{api_user}",
+        })
+
+        results = {
+            "success": True,
+            "topup_count": 0,
+            "topup_success_count": 0,
+            "error": "",
+        }
+
+        # 使用迭代器方式分步获取 CDK
+        # 每次迭代调用一个 get_cdk 函数，返回该函数的 CDK 列表
+        cdk_iter = self.provider_config.iter_get_cdk(self.account_config)
+        topup_count = 0
+        should_stop = False
+        remaining_cdks: list[str] = []  # 收集剩余的 CDK
+
+        for cdk_list in cdk_iter:
+            print(f"ℹ️ {self.account_name}: Got {len(cdk_list)} CDK(s) from current getter")
+            
+            # 遍历当前 get_cdk 函数返回的 CDK 列表
+            for i, cdk in enumerate(cdk_list):
+                # 如果不是第一个 CDK，等待间隔时间
+                if topup_count > 0 and topup_interval > 0:
+                    print(f"⏳ {self.account_name}: Waiting {topup_interval} seconds before next topup...")
+                    await asyncio.sleep(topup_interval)
+
+                topup_count += 1
+                print(f"💰 {self.account_name}: Executing topup #{topup_count} with CDK: {cdk}")
+
+                topup_result = topup(
+                    account_name=self.account_name,
+                    topup_url=topup_url,
+                    headers=topup_headers,
+                    cookies=cookies,
+                    key=cdk,
+                    proxy=http_proxy,
+                )
+
+                results["topup_count"] += 1
+
+                if topup_result.get("success"):
+                    results["topup_success_count"] += 1
+                    if not topup_result.get("already_used"):
+                        print(f"✅ {self.account_name}: Topup #{topup_count} successful")
+                else:
+                    # topup 失败，记录错误并停止
+                    error_msg = topup_result.get("error", "Topup failed")
+                    results["success"] = False
+                    # 收集当前列表中剩余的 CDK（已获取但未执行 topup 的）
+                    remaining_cdks = cdk_list[i + 1:]
+                    print(f"❌ {self.account_name}: Topup #{topup_count} failed, stopping topup process")
+                    should_stop = True
+                    break
+            
+            # 如果需要停止，不再调用后续的 get_cdk 函数
+            if should_stop:
+                break
+
+        # 将剩余 CDK 拼接到 error 中
+        if remaining_cdks:
+            remaining_cdks_str = ", ".join(remaining_cdks)
+            results["error"] = f"{error_msg} | Remaining topup CDKs: {remaining_cdks_str}"
+            print(f"⚠️ {self.account_name}: {len(remaining_cdks)} remaining CDK(s) not topuped: {remaining_cdks_str}")
+        elif not results["success"]:
+            # 没有剩余 CDK，但 topup 失败了
+            results["error"] = error_msg
+
+        if topup_count == 0:
+            print(f"ℹ️ {self.account_name}: No CDK available for topup")
+        elif results["topup_success_count"] > 0:
+            print(f"✅ {self.account_name}: Total {results['topup_success_count']}/{results['topup_count']} topup(s) successful")
+
+        return results
 
     async def check_in_with_cookies(self, cookies: dict, api_user: str | int) -> tuple[bool, dict]:
         """使用已有 cookies 执行签到操作"""
@@ -963,6 +900,20 @@ class CheckIn:
                     return False, {"error": "Check-in failed"}
             else:
                 print(f"ℹ️ {self.account_name}: Check-in completed automatically (triggered by user info request)")
+
+            # 如果需要手动 topup（配置了 topup_path 和 get_cdk），执行 topup
+            if self.provider_config.needs_manual_topup():
+                print(f"ℹ️ {self.account_name}: Provider requires manual topup, executing...")
+                topup_result = await self.execute_topup(headers, cookies, api_user)
+                if topup_result.get("topup_count", 0) > 0:
+                    print(
+                        f"ℹ️ {self.account_name}: Topup completed - "
+                        f"{topup_result.get('topup_success_count', 0)}/{topup_result.get('topup_count', 0)} successful"
+                    )
+                if not topup_result.get("success"):
+                    error_msg = topup_result.get("error") or "Topup failed"
+                    print(f"❌ {self.account_name}: Topup failed, stopping check-in process")
+                    return False, {"error": error_msg}
 
             user_info = await self.get_user_info(client, headers)
             if user_info and user_info.get("success"):
@@ -1078,7 +1029,7 @@ class CheckIn:
                     response = client.get(callback_url, headers=headers, timeout=30)
 
                     if response.status_code == 200:
-                        json_data = self._check_and_handle_response(response, "github_oauth_callback")
+                        json_data = response_resolve(response, "github_oauth_callback", self.account_name)
                         if json_data and json_data.get("success"):
                             user_data = json_data.get("data", {})
                             api_user = user_data.get("id")
@@ -1226,7 +1177,7 @@ class CheckIn:
                     response = client.get(callback_url, headers=headers, timeout=30)
 
                     if response.status_code == 200:
-                        json_data = self._check_and_handle_response(response, "linuxdo_oauth_callback")
+                        json_data = response_resolve(response, "linuxdo_oauth_callback", self.account_name)
                         if json_data and json_data.get("success"):
                             user_data = json_data.get("data", {})
                             api_user = user_data.get("id")
@@ -1377,3 +1328,5 @@ class CheckIn:
         print(f"\n🎯 {self.account_name}: {successful_count}/{len(results)} authentication methods successful")
 
         return results
+
+   
