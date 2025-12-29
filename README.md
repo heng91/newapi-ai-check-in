@@ -72,7 +72,8 @@ Affs:
         "username": "user2",
         "password": "pass2",
       },
-      "access_token": "provider: x666 必须配置"
+      // 额外的配置说明
+      "access_token": "provider: x666 必须配置, 来自 https://qd.x666.me/"
       "fuli_cookies": {
         "session": "provider: runtimeaway 必须配置， 来自 https://fuli.hxi.me/"
       }
@@ -160,7 +161,7 @@ Affs:
 
 ## 执行时间
 
-- 脚本每 8 小时执行一次（1. action 无法准确触发，基本延时 1~1.5h；2. 目前观测到 newapi.ai 的签到是每 24h 而不是零点就可签到）
+- 脚本每 8 小时执行一次（1. action 无法准确触发，基本延时 1~1.5h；2. 目前观测到 anyrouter.top 的签到是每 24h 而不是零点就可签到）
 - 你也可以随时手动触发签到
 
 ## 注意事项
