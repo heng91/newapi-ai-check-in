@@ -434,7 +434,7 @@ class CheckIn:
                         errors.append(topup_result.get("error", "Topup failed"))
                         # topup 失败时直接返回，不继续执行 wheel
                         print(f"❌ {self.account_name}: Checkin topup failed, stopping")
-                        results["display"] = "\n".join([f"❗ Errors: {'; '.join(errors)}"])
+                        results["display"] = f"❗ Checkin topup failed: \n{'\n  '.join(errors)}"
                         return False, results
                     topup_count += 1
                 elif checkin_success:
@@ -550,8 +550,7 @@ class CheckIn:
             
             # 拼接 errors（如果有）
             if errors:
-                errors_str = '; '.join(errors)
-                display_parts.append(f"❗ Errors: {errors_str}")
+                display_parts.append(f"❗ Errors: \n{'\n  '.join(errors)}")
             
             results["display"] = "\n".join(display_parts) if display_parts else ""
 
@@ -572,7 +571,7 @@ class CheckIn:
         except Exception as e:
             print(f"❌ {self.account_name}: Error occurred during check-in process - {e}")
             # 返回完整的 results 格式，保留已完成的部分任务状态
-            results["display"] = "\n".join([f"❗ An error occurred during the check-in process: {'; '.join(errors)}"])
+            results["display"] = f"❗ An error occurred: {str(e)} \n{'\n  '.join(errors)}"
             return False, results
         finally:
             client.close()
