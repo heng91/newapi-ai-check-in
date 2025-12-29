@@ -64,13 +64,17 @@ Affs:
     },
     {
       "name": "另一个账号",
-      "provider": "agentrouter",
+      "provider": "x666",
       "proxy": {
         "server": "http://username:password@proxy.example.com:8080"
       }
       "linux.do": {
         "username": "user2",
         "password": "pass2",
+      },
+      "access_token": "provider: x666 必须配置"
+      "fuli_cookies": {
+        "session": "provider: runtimeaway 必须配置， 来自 https://fuli.hxi.me/"
       }
     }
   ]
@@ -79,7 +83,7 @@ Affs:
 #### 字段说明：
 
 - `name` (可选)：自定义账号显示名称，用于通知和日志中标识账号
-- `provider` (可选)：供应商，内置 `anyrouter`、`agentrouter`、`wong`、`huan666`、`aiai.li`, 默认使用 `anyrouter`
+- `provider` (可选)：供应商，内置 `anyrouter`、`agentrouter`、`wong`、`huan666`、 `x666`, `runawaytime` `aiai.li`, 默认使用 `anyrouter`
 - `proxy` (可选)：单个账号代理配置，支持 `http`、`socks5` 代理
 - `cookies`(可选)：用于身份验证的 cookies 数据
 - `api_user`(cookies 设置时必需)：用于请求头的 new-api-user 参数
