@@ -52,7 +52,7 @@ class ProviderConfig:
     linuxdo_client_id: str | None = None
     linuxdo_auth_path: str = "/api/oauth/lunuxdo",
     aliyun_captcha: bool = False
-    bypass_method: Literal["waf_cookies"] | None = None
+    bypass_method: Literal["waf_cookies", "cf_clearance"] | None = None
 
     @classmethod
     def from_dict(cls, name: str, data: dict) -> "ProviderConfig":
@@ -85,6 +85,10 @@ class ProviderConfig:
     def needs_waf_cookies(self) -> bool:
         """判断是否需要获取 WAF cookies"""
         return self.bypass_method == "waf_cookies"
+
+    def needs_cf_clearance(self) -> bool:
+        """判断是否需要获取 Cloudflare cf_clearance cookie"""
+        return self.bypass_method == "cf_clearance"
 
     def needs_manual_check_in(self) -> bool:
         """判断是否需要手动调用签到接口"""
@@ -169,7 +173,7 @@ class AccountConfig:
     def from_dict(cls, data: dict, index: int) -> "AccountConfig":
         """从字典创建 AccountConfig"""
         provider = data.get("provider", "anyrouter")
-        name = data.get("name", f"Account {index + 1}")
+        name = data.get("name")
 
         # Handle different authentication types
         cookies = data.get("cookies", "")
@@ -194,8 +198,11 @@ class AccountConfig:
         )
 
     def get_display_name(self, index: int = 0) -> str:
-        """获取显示名称"""
-        return self.name if self.name else f"Account {index + 1}"
+        """获取显示名称
+        
+        如果设置了 name 则返回 name，否则返回 "{provider} {index + 1}"
+        """
+        return self.name if self.name else f"{self.provider} {index + 1}"
 
     def get(self, key: str, default=None):
         """获取配置值，优先从已知属性获取，否则从 extra 中获取"""
@@ -398,6 +405,82 @@ class AppConfig:
                 github_client_id=None,
                 github_auth_path=None,
                 linuxdo_client_id="4OtAotK6cp4047lgPD4kPXNhWRbRdTw3",
+                linuxdo_auth_path="/api/oauth/linuxdo",
+                aliyun_captcha=False,
+                bypass_method=None,
+            ),
+            "kfc": ProviderConfig(
+                name="kfc",
+                origin="https://kfc-api.sxxe.net",
+                login_path="/login",
+                status_path="/api/status",
+                auth_state_path="/api/oauth/state",
+                check_in_path="/api/user/checkin",  # 标准 newapi checkin 接口
+                check_in_status=newapi_check_in_status,  # 签到状态查询函数，返回 bool
+                user_info_path="/api/user/self",
+                topup_path="/api/user/topup",
+                get_cdk=None,
+                api_user_key="new-api-user",
+                github_client_id=None,
+                github_auth_path="/api/oauth/github",
+                linuxdo_client_id="UZgHjwXCE3HTrsNMjjEi0d8wpcj7d4Of",
+                linuxdo_auth_path="/api/oauth/linuxdo",
+                aliyun_captcha=False,
+                bypass_method=None,
+            ),
+            "neb": ProviderConfig(
+                name="neb",
+                origin="https://ai.zzhdsgsss.xyz",
+                login_path="/login",
+                status_path="/api/status",
+                auth_state_path="/api/oauth/state",
+                check_in_path="/api/user/checkin",  # 标准 newapi checkin 接口
+                check_in_status=newapi_check_in_status,  # 签到状态查询函数，返回 bool
+                user_info_path="/api/user/self",
+                topup_path="/api/user/topup",
+                get_cdk=None,
+                api_user_key="new-api-user",
+                github_client_id=None,
+                github_auth_path="/api/oauth/github",
+                linuxdo_client_id="ZflEL6xK90fbCcuWpHEKAcofgK8B5msn",
+                linuxdo_auth_path="/api/oauth/linuxdo",
+                aliyun_captcha=False,
+                bypass_method=None,
+            ),
+            "elysiver": ProviderConfig(
+                name="elysiver",
+                origin="https://elysiver.h-e.top",
+                login_path="/login",
+                status_path="/api/status",
+                auth_state_path="/api/oauth/state",
+                check_in_path="/api/user/checkin",  # 标准 newapi checkin 接口
+                check_in_status=newapi_check_in_status,  # 签到状态查询函数，返回 bool
+                user_info_path="/api/user/self",
+                topup_path="/api/user/topup",
+                get_cdk=None,
+                api_user_key="new-api-user",
+                github_client_id=None,
+                github_auth_path="/api/oauth/github",
+                linuxdo_client_id="E2eaCQVl9iecd4aJBeTKedXfeKiJpSPF",
+                linuxdo_auth_path="/api/oauth/linuxdo",
+                aliyun_captcha=False,
+                bypass_method="cf_clearance",
+            ),
+            "hotaru": ProviderConfig(
+                name="hotaru",
+                origin="https://api.hotaruapi.top",
+                login_path="/login",
+                status_path="/api/status",
+                auth_state_path="/api/oauth/state",
+                check_in_path="/api/user/checkin",  # 标准 newapi checkin 接口
+                check_in_status=newapi_check_in_status,  # 签到状态查询函数，返回 bool
+                user_info_path="/api/user/self",
+                topup_path="/api/user/topup",
+                get_cdk=None,
+                api_user_key="new-api-user",
+                github_client_id=None,
+                github_auth_path="/api/oauth/github",
+                linuxdo_client_id="qVGkHnU8fLzJVEMgHCuNUCYifUQwePWn",
                 linuxdo_auth_path="/api/oauth/linuxdo",
                 aliyun_captcha=False,
                 bypass_method=None,
