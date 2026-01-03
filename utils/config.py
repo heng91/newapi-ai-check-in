@@ -170,7 +170,7 @@ class AccountConfig:
     extra: dict = field(default_factory=dict)  # 存储额外的配置字段
 
     @classmethod
-    def from_dict(cls, data: dict, index: int) -> "AccountConfig":
+    def from_dict(cls, data: dict) -> "AccountConfig":
         """从字典创建 AccountConfig"""
         provider = data.get("provider", "anyrouter")
         name = data.get("name")
@@ -622,7 +622,7 @@ class AppConfig:
                     print(f"❌ Account {i + 1} name field cannot be empty")
                     return []
 
-                accounts.append(AccountConfig.from_dict(account, i))
+                accounts.append(AccountConfig.from_dict(account))
 
             return accounts
         except json.JSONDecodeError as e:
