@@ -766,7 +766,7 @@ class CheckIn:
     ) -> dict:
         """执行完整的 CDK 获取和充值流程
 
-        使用迭代器方式分步获取 CDK，每个 get_cdk 函数返回的 CDK 列表逐个执行 topup
+        直接调用 get_cdk 生成器函数，每次 yield 一个 CDK 字符串并执行 topup
         每次 topup 之间保持间隔时间，如果 topup 失败则停止
 
         Args:
@@ -790,6 +790,16 @@ class CheckIn:
                 "errors": ["No topup URL configured"],
             }
 
+        # 检查是否配置了 get_cdk 函数
+        if not self.provider_config.get_cdk:
+            print(f"ℹ️ {self.account_name}: No get_cdk function configured for provider {self.provider_config.name}")
+            return {
+                "success": True,
+                "topup_count": 0,
+                "topup_success_count": 0,
+                "error": "",
+            }
+
         # 构建 topup 请求头
         topup_headers = headers.copy()
         topup_headers.update({
@@ -805,63 +815,42 @@ class CheckIn:
             "error": "",
         }
 
-        # 使用迭代器方式分步获取 CDK
-        # 每次迭代调用一个 get_cdk 函数，返回该函数的 CDK 列表
-        cdk_iter = self.provider_config.iter_get_cdk(self.account_config)
+        # 直接调用 get_cdk 生成器函数，每次 yield 一个 CDK 字符串
+        cdk_generator = self.provider_config.get_cdk(self.account_config)
         topup_count = 0
-        should_stop = False
-        remaining_cdks: list[str] = []  # 收集剩余的 CDK
+        error_msg = ""
 
-        for cdk_list in cdk_iter:
-            print(f"ℹ️ {self.account_name}: Got {len(cdk_list)} CDK(s) from current getter")
-            
-            # 遍历当前 get_cdk 函数返回的 CDK 列表
-            for i, cdk in enumerate(cdk_list):
-                # 如果不是第一个 CDK，等待间隔时间
-                if topup_count > 0 and topup_interval > 0:
-                    print(f"⏳ {self.account_name}: Waiting {topup_interval} seconds before next topup...")
-                    await asyncio.sleep(topup_interval)
+        for cdk in cdk_generator:
+            # 如果不是第一个 CDK，等待间隔时间
+            if topup_count > 0 and topup_interval > 0:
+                print(f"⏳ {self.account_name}: Waiting {topup_interval} seconds before next topup...")
+                await asyncio.sleep(topup_interval)
 
-                topup_count += 1
-                print(f"💰 {self.account_name}: Executing topup #{topup_count} with CDK: {cdk}")
+            topup_count += 1
+            print(f"💰 {self.account_name}: Executing topup #{topup_count} with CDK: {cdk}")
 
-                topup_result = topup(
-                    account_name=self.account_name,
-                    topup_url=topup_url,
-                    headers=topup_headers,
-                    cookies=cookies,
-                    key=cdk,
-                    proxy=http_proxy,
-                )
+            topup_result = topup(
+                account_name=self.account_name,
+                topup_url=topup_url,
+                headers=topup_headers,
+                cookies=cookies,
+                key=cdk,
+                proxy=http_proxy,
+            )
 
-                results["topup_count"] += 1
+            results["topup_count"] += 1
 
-                if topup_result.get("success"):
-                    results["topup_success_count"] += 1
-                    if not topup_result.get("already_used"):
-                        print(f"✅ {self.account_name}: Topup #{topup_count} successful")
-                else:
-                    # topup 失败，记录错误并停止
-                    error_msg = topup_result.get("error", "Topup failed")
-                    results["success"] = False
-                    # 收集当前列表中剩余的 CDK（已获取但未执行 topup 的）
-                    remaining_cdks = cdk_list[i + 1:]
-                    print(f"❌ {self.account_name}: Topup #{topup_count} failed, stopping topup process")
-                    should_stop = True
-                    break
-            
-            # 如果需要停止，不再调用后续的 get_cdk 函数
-            if should_stop:
+            if topup_result.get("success"):
+                results["topup_success_count"] += 1
+                if not topup_result.get("already_used"):
+                    print(f"✅ {self.account_name}: Topup #{topup_count} successful")
+            else:
+                # topup 失败，记录错误并停止
+                error_msg = topup_result.get("error", "Topup failed")
+                results["success"] = False
+                results["error"] = error_msg
+                print(f"❌ {self.account_name}: Topup #{topup_count} failed, stopping topup process")
                 break
-
-        # 将剩余 CDK 拼接到 error 中
-        if remaining_cdks:
-            remaining_cdks_str = ", ".join(remaining_cdks)
-            results["error"] = f"{error_msg} | Remaining topup CDKs: {remaining_cdks_str}"
-            print(f"⚠️ {self.account_name}: {len(remaining_cdks)} remaining CDK(s) not topuped: {remaining_cdks_str}")
-        elif not results["success"]:
-            # 没有剩余 CDK，但 topup 失败了
-            results["error"] = error_msg
 
         if topup_count == 0:
             print(f"ℹ️ {self.account_name}: No CDK available for topup")

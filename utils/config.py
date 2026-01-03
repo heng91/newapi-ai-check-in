@@ -10,16 +10,15 @@ from typing import Callable, Dict, Generator, List, Literal
 
 from utils.signature import aiai_li_sign_in_url
 from utils.get_cdk import (
-    get_runawaytime_checkin_cdk,
-    get_runawaytime_wheel_cdk,
+    get_runawaytime_cdk,
     get_x666_cdk,
 )
 
 
 # 前向声明 AccountConfig 类型，用于类型注解
 # 实际的 AccountConfig 类在后面定义
-# 定义 CDK 获取函数的类型：接收 AccountConfig 参数，返回 str | List[str] | None
-CdkGetterFunc = Callable[["AccountConfig"], str | List[str] | None]
+# 定义 CDK 获取函数的类型：接收 AccountConfig 参数，返回 Generator[str, None, None]
+CdkGetterFunc = Callable[["AccountConfig"], Generator[str, None, None]]
 
 
 @dataclass
@@ -34,7 +33,7 @@ class ProviderConfig:
     sign_in_path: str | Callable[[str, str | int], str] | None = "/api/user/sign_in"
     user_info_path: str = "/api/user/self"
     topup_path: str | None = "/api/user/topup"
-    get_cdk: CdkGetterFunc | List[CdkGetterFunc] | None = None
+    get_cdk: CdkGetterFunc | None = None
     api_user_key: str = "new-api-user"
     github_client_id: str | None = None
     github_auth_path: str = "/api/oauth/github",
@@ -135,43 +134,6 @@ class ProviderConfig:
     def get_linuxdo_auth_url(self) -> str:
         """获取 LinuxDo 认证 URL"""
         return f"{self.origin}{self.linuxdo_auth_path}"
-
-    def iter_get_cdk(self, account_config: "AccountConfig") -> Generator[List[str], None, None]:
-        """迭代获取 CDK（生成器方式）
-        
-        每次调用一个 get_cdk 函数，将结果统一转换为 list[str] 后 yield 返回
-        适用于需要分步执行每个 get_cdk 函数的场景
-        
-        Args:
-            account_config: 账号配置对象
-        
-        Yields:
-            List[str]: CDK 字符串列表（每次 yield 一个 get_cdk 函数的结果）
-        """
-        if not self.get_cdk:
-            return
-        
-        # 如果是单个函数
-        if callable(self.get_cdk):
-            result = self.get_cdk(account_config)
-            if result:
-                if isinstance(result, list):
-                    yield result
-                else:
-                    yield [result]
-            return
-        
-        # 如果是函数数组，依次调用每个函数
-        if isinstance(self.get_cdk, list):
-            for func in self.get_cdk:
-                if callable(func):
-                    result = func(account_config)
-                    if result:
-                        if isinstance(result, list):
-                            yield result
-                        else:
-                            yield [result]
-
 
 @dataclass
 class AccountConfig:
@@ -389,7 +351,7 @@ class AppConfig:
                 sign_in_path=None,  # 签到通过 fuli.hxi.me 完成
                 user_info_path="/api/user/self",
                 topup_path="/api/user/topup",
-                get_cdk=[get_runawaytime_checkin_cdk, get_runawaytime_wheel_cdk],
+                get_cdk=get_runawaytime_cdk,
                 api_user_key="new-api-user",
                 github_client_id=None,
                 github_auth_path=None,
