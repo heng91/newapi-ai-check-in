@@ -16,6 +16,7 @@ from utils.config import AccountConfig, ProviderConfig
 from utils.browser_utils import parse_cookies, get_random_user_agent, take_screenshot, aliyun_captcha_check
 from utils.http_utils import proxy_resolve, response_resolve
 from utils.topup import topup
+from utils.get_headers import get_browser_headers, print_browser_headers
 
 
 class CheckIn:
@@ -39,6 +40,10 @@ class CheckIn:
         self.safe_account_name = "".join(c if c.isalnum() else "_" for c in account_name)
         self.account_config = account_config
         self.provider_config = provider_config
+
+        # 将全局代理存入 account_config.extra，供 get_cdk 和 check_in_status 等函数使用
+        if global_proxy:
+            self.account_config.extra["global_proxy"] = global_proxy
 
         # 代理优先级: 账号配置 > 全局配置
         self.camoufox_proxy_config = account_config.proxy if account_config.proxy else global_proxy
@@ -110,6 +115,106 @@ class CheckIn:
                 except Exception as e:
                     print(f"❌ {self.account_name}: Error occurred while getting WAF cookies: {e}")
                     return None
+                finally:
+                    await page.close()
+
+    async def get_cf_clearance_with_browser(self) -> tuple[dict | None, dict | None]:
+        """使用 Camoufox 获取 Cloudflare cf_clearance cookie（隐私模式）
+        
+        等待 Cloudflare 验证通过后获取 cf_clearance cookie
+        
+        Returns:
+            tuple: (cf_cookies, browser_headers)
+                - cf_cookies: Cloudflare cookies 字典，如果失败则为 None
+                - browser_headers: 浏览器指纹头部信息字典，包含 User-Agent 和 Client Hints
+        """
+        print(
+            f"ℹ️ {self.account_name}: Starting browser to get cf_clearance cookie (using proxy: {'true' if self.camoufox_proxy_config else 'false'})"
+        )
+
+        with tempfile.TemporaryDirectory(prefix=f"camoufox_{self.safe_account_name}_cf_") as tmp_dir:
+            print(f"ℹ️ {self.account_name}: Using temporary directory: {tmp_dir}")
+            async with AsyncCamoufox(
+                persistent_context=True,
+                user_data_dir=tmp_dir,
+                headless=False,
+                humanize=True,
+                locale="en-US",
+                geoip=True if self.camoufox_proxy_config else False,
+                proxy=self.camoufox_proxy_config,
+            ) as browser:
+                page = await browser.new_page()
+
+                try:
+                    print(f"ℹ️ {self.account_name}: Access login page to trigger Cloudflare challenge")
+                    await page.goto(self.provider_config.get_login_url(), wait_until="networkidle")
+
+                    # 等待 Cloudflare 验证完成，最多等待 60 秒
+                    max_wait_time = 60000  # 60 秒
+                    check_interval = 2000  # 每 2 秒检查一次
+                    elapsed_time = 0
+
+                    while elapsed_time < max_wait_time:
+                        # 检查是否已经获取到 cf_clearance cookie
+                        cookies = await browser.cookies()
+                        cf_clearance = None
+                        for cookie in cookies:
+                            if cookie.get("name") == "cf_clearance":
+                                cf_clearance = cookie.get("value")
+                                break
+
+                        if cf_clearance:
+                            print(f"✅ {self.account_name}: cf_clearance cookie obtained")
+                            break
+
+                        # 检查页面是否还在 Cloudflare 验证页面
+                        page_title = await page.title()
+                        page_content = await page.content()
+                        
+                        if "Just a moment" in page_title or "Checking your browser" in page_content:
+                            print(f"ℹ️ {self.account_name}: Cloudflare challenge in progress, waiting...")
+                        else:
+                            # 页面已经加载完成，但可能还没有 cf_clearance
+                            print(f"ℹ️ {self.account_name}: Page loaded, checking for cf_clearance...")
+
+                        await page.wait_for_timeout(check_interval)
+                        elapsed_time += check_interval
+
+                    # 最终获取所有 cookies
+                    cookies = await browser.cookies()
+
+                    cf_cookies = {}
+                    print(f"ℹ️ {self.account_name}: Cloudflare cookies")
+                    for cookie in cookies:
+                        cookie_name = cookie.get("name")
+                        cookie_value = cookie.get("value")
+                        print(f"  📚 Cookie: {cookie_name} (value: {cookie_value[:50] if cookie_value and len(cookie_value) > 50 else cookie_value}...)")
+                        # 获取 Cloudflare 相关的 cookies
+                        if cookie_name in ["cf_clearance", "__cf_bm", "cf_chl_2", "cf_chl_prog"] and cookie_value is not None:
+                            cf_cookies[cookie_name] = cookie_value
+
+                    print(f"ℹ️ {self.account_name}: Got {len(cf_cookies)} Cloudflare cookies")
+
+                    # 检查是否获取到 cf_clearance cookie
+                    if "cf_clearance" not in cf_cookies:
+                        print(f"❌ {self.account_name}: cf_clearance cookie not obtained")
+                        await take_screenshot(page, "cf_clearance_failed", self.account_name)
+                        return None, None
+
+                    # 使用工具函数获取浏览器指纹信息（User-Agent 和 Client Hints）
+                    browser_headers = await get_browser_headers(page)
+                    print_browser_headers(self.account_name, browser_headers)
+
+                    # 显示获取到的 cookies
+                    cookie_names = list(cf_cookies.keys())
+                    print(f"✅ {self.account_name}: Successfully got Cloudflare cookies: {cookie_names}")
+
+                    return cf_cookies, browser_headers
+
+                except Exception as e:
+                    print(f"❌ {self.account_name}: Error occurred while getting cf_clearance cookie: {e}")
+                    await take_screenshot(page, "cf_clearance_error", self.account_name)
+                    return None, None
                 finally:
                     await page.close()
 
@@ -715,14 +820,23 @@ class CheckIn:
         client: httpx.Client,
         headers: dict,
         api_user: str | int,
-    ):
-        """执行签到请求"""
+    ) -> dict:
+        """执行签到请求
+        
+        Returns:
+            包含 success, message, data 等信息的字典
+        """
         print(f"🌐 {self.account_name}: Executing check-in")
 
         checkin_headers = headers.copy()
         checkin_headers.update({"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"})
 
-        response = client.post(self.provider_config.get_sign_in_url(api_user), headers=checkin_headers, timeout=30)
+        check_in_url = self.provider_config.get_check_in_url(api_user)
+        if not check_in_url:
+            print(f"❌ {self.account_name}: No check-in URL configured")
+            return {"success": False, "error": "No check-in URL configured"}
+
+        response = client.post(check_in_url, headers=checkin_headers, timeout=30)
 
         print(f"📨 {self.account_name}: Response status code {response.status_code}")
 
@@ -733,10 +847,10 @@ class CheckIn:
                 # 如果不是 JSON 响应（可能是 HTML），检查是否包含成功标识
                 if "success" in response.text.lower():
                     print(f"✅ {self.account_name}: Check-in successful!")
-                    return True
+                    return {"success": True, "message": "Check-in successful"}
                 else:
                     print(f"❌ {self.account_name}: Check-in failed - Invalid response format")
-                    return False
+                    return {"success": False, "error": "Invalid response format"}
 
             # 检查签到结果
             message = json_data.get("message", json_data.get("msg", ""))
@@ -746,16 +860,31 @@ class CheckIn:
                 or json_data.get("code") == 0
                 or json_data.get("success")
                 or "已经签到" in message
+                or "签到成功" in message
             ):
-                print(f"✅ {self.account_name}: Check-in successful!")
-                return True
+                # 提取签到数据
+                check_in_data = json_data.get("data", {})
+                checkin_date = check_in_data.get("checkin_date", "")
+                quota_awarded = check_in_data.get("quota_awarded", 0)
+                
+                if quota_awarded:
+                    quota_display = round(quota_awarded / 500000, 2)
+                    print(f"✅ {self.account_name}: Check-in successful! Date: {checkin_date}, Quota awarded: ${quota_display}")
+                else:
+                    print(f"✅ {self.account_name}: Check-in successful! {message}")
+                
+                return {
+                    "success": True,
+                    "message": message or "Check-in successful",
+                    "data": check_in_data,
+                }
             else:
                 error_msg = json_data.get("msg", json_data.get("message", "Unknown error"))
                 print(f"❌ {self.account_name}: Check-in failed - {error_msg}")
-                return False
+                return {"success": False, "error": error_msg}
         else:
             print(f"❌ {self.account_name}: Check-in failed - HTTP {response.status_code}")
-            return False
+            return {"success": False, "error": f"HTTP {response.status_code}"}
 
     async def execute_topup(
         self,
@@ -766,7 +895,7 @@ class CheckIn:
     ) -> dict:
         """执行完整的 CDK 获取和充值流程
 
-        使用迭代器方式分步获取 CDK，每个 get_cdk 函数返回的 CDK 列表逐个执行 topup
+        直接调用 get_cdk 生成器函数，每次 yield 一个 CDK 字符串并执行 topup
         每次 topup 之间保持间隔时间，如果 topup 失败则停止
 
         Args:
@@ -790,6 +919,16 @@ class CheckIn:
                 "errors": ["No topup URL configured"],
             }
 
+        # 检查是否配置了 get_cdk 函数
+        if not self.provider_config.get_cdk:
+            print(f"ℹ️ {self.account_name}: No get_cdk function configured for provider {self.provider_config.name}")
+            return {
+                "success": True,
+                "topup_count": 0,
+                "topup_success_count": 0,
+                "error": "",
+            }
+
         # 构建 topup 请求头
         topup_headers = headers.copy()
         topup_headers.update({
@@ -805,63 +944,42 @@ class CheckIn:
             "error": "",
         }
 
-        # 使用迭代器方式分步获取 CDK
-        # 每次迭代调用一个 get_cdk 函数，返回该函数的 CDK 列表
-        cdk_iter = self.provider_config.iter_get_cdk(self.account_config)
+        # 直接调用 get_cdk 生成器函数，每次 yield 一个 CDK 字符串
+        cdk_generator = self.provider_config.get_cdk(self.account_config)
         topup_count = 0
-        should_stop = False
-        remaining_cdks: list[str] = []  # 收集剩余的 CDK
+        error_msg = ""
 
-        for cdk_list in cdk_iter:
-            print(f"ℹ️ {self.account_name}: Got {len(cdk_list)} CDK(s) from current getter")
-            
-            # 遍历当前 get_cdk 函数返回的 CDK 列表
-            for i, cdk in enumerate(cdk_list):
-                # 如果不是第一个 CDK，等待间隔时间
-                if topup_count > 0 and topup_interval > 0:
-                    print(f"⏳ {self.account_name}: Waiting {topup_interval} seconds before next topup...")
-                    await asyncio.sleep(topup_interval)
+        for cdk in cdk_generator:
+            # 如果不是第一个 CDK，等待间隔时间
+            if topup_count > 0 and topup_interval > 0:
+                print(f"⏳ {self.account_name}: Waiting {topup_interval} seconds before next topup...")
+                await asyncio.sleep(topup_interval)
 
-                topup_count += 1
-                print(f"💰 {self.account_name}: Executing topup #{topup_count} with CDK: {cdk}")
+            topup_count += 1
+            print(f"💰 {self.account_name}: Executing topup #{topup_count} with CDK: {cdk}")
 
-                topup_result = topup(
-                    account_name=self.account_name,
-                    topup_url=topup_url,
-                    headers=topup_headers,
-                    cookies=cookies,
-                    key=cdk,
-                    proxy=http_proxy,
-                )
+            topup_result = topup(
+                account_name=self.account_name,
+                topup_url=topup_url,
+                headers=topup_headers,
+                cookies=cookies,
+                key=cdk,
+                proxy=http_proxy,
+            )
 
-                results["topup_count"] += 1
+            results["topup_count"] += 1
 
-                if topup_result.get("success"):
-                    results["topup_success_count"] += 1
-                    if not topup_result.get("already_used"):
-                        print(f"✅ {self.account_name}: Topup #{topup_count} successful")
-                else:
-                    # topup 失败，记录错误并停止
-                    error_msg = topup_result.get("error", "Topup failed")
-                    results["success"] = False
-                    # 收集当前列表中剩余的 CDK（已获取但未执行 topup 的）
-                    remaining_cdks = cdk_list[i + 1:]
-                    print(f"❌ {self.account_name}: Topup #{topup_count} failed, stopping topup process")
-                    should_stop = True
-                    break
-            
-            # 如果需要停止，不再调用后续的 get_cdk 函数
-            if should_stop:
+            if topup_result.get("success"):
+                results["topup_success_count"] += 1
+                if not topup_result.get("already_used"):
+                    print(f"✅ {self.account_name}: Topup #{topup_count} successful")
+            else:
+                # topup 失败，记录错误并停止
+                error_msg = topup_result.get("error", "Topup failed")
+                results["success"] = False
+                results["error"] = error_msg
+                print(f"❌ {self.account_name}: Topup #{topup_count} failed, stopping topup process")
                 break
-
-        # 将剩余 CDK 拼接到 error 中
-        if remaining_cdks:
-            remaining_cdks_str = ", ".join(remaining_cdks)
-            results["error"] = f"{error_msg} | Remaining topup CDKs: {remaining_cdks_str}"
-            print(f"⚠️ {self.account_name}: {len(remaining_cdks)} remaining CDK(s) not topuped: {remaining_cdks_str}")
-        elif not results["success"]:
-            # 没有剩余 CDK，但 topup 失败了
-            results["error"] = error_msg
 
         if topup_count == 0:
             print(f"ℹ️ {self.account_name}: No CDK available for topup")
@@ -870,8 +988,19 @@ class CheckIn:
 
         return results
 
-    async def check_in_with_cookies(self, cookies: dict, api_user: str | int) -> tuple[bool, dict]:
-        """使用已有 cookies 执行签到操作"""
+    async def check_in_with_cookies(
+        self,
+        cookies: dict,
+        common_headers: dict,
+        api_user: str | int,
+    ) -> tuple[bool, dict]:
+        """使用已有 cookies 执行签到操作
+        
+        Args:
+            cookies: cookies 字典
+            common_headers: 公用请求头（包含 User-Agent 和可能的 Client Hints）
+            api_user: API 用户 ID
+        """
         print(
             f"ℹ️ {self.account_name}: Executing check-in with existing cookies (using proxy: {'true' if self.http_proxy_config else 'false'})"
         )
@@ -880,24 +1009,41 @@ class CheckIn:
         try:
             client.cookies.update(cookies)
 
-            headers = {
-                "User-Agent": get_random_user_agent(),
-                "Accept": "application/json, text/plain, */*",
-                "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-                "Accept-Encoding": "gzip, deflate, br, zstd",
-                "Referer": self.provider_config.get_login_url(),
-                "Origin": self.provider_config.origin,
-                "Connection": "keep-alive",
-                "Sec-Fetch-Dest": "empty",
-                "Sec-Fetch-Mode": "cors",
-                "Sec-Fetch-Site": "same-origin",
-                self.provider_config.api_user_key: f"{api_user}",
-            }
+            # 使用传入的公用请求头，并添加动态头部
+            headers = common_headers.copy()
+            headers[self.provider_config.api_user_key] = f"{api_user}"
+            headers["Referer"] = self.provider_config.get_login_url()
+            headers["Origin"] = self.provider_config.origin
 
+            # 检查是否需要手动签到
             if self.provider_config.needs_manual_check_in():
-                success = self.execute_check_in(client, headers, api_user)
-                if not success:
-                    return False, {"error": "Check-in failed"}
+                # 如果配置了签到状态查询函数，先检查是否已签到
+                if self.provider_config.has_check_in_status():
+                    checked_in_today = self.provider_config.check_in_status(
+                        provider_config=self.provider_config,
+                        account_config=self.account_config,
+                        cookies=cookies,
+                        headers=headers,
+                    )
+                    if checked_in_today:
+                        print(f"ℹ️ {self.account_name}: Already checked in today, skipping check-in")
+                    else:
+                        # 未签到，执行签到
+                        check_in_result = self.execute_check_in(client, headers, api_user)
+                        if not check_in_result.get("success"):
+                            return False, {"error": check_in_result.get("error", "Check-in failed")}
+                        # 签到成功后再次查询状态（显示最新状态）
+                        self.provider_config.check_in_status(
+                            provider_config=self.provider_config,
+                            account_config=self.account_config,
+                            cookies=cookies,
+                            headers=headers,
+                        )
+                else:
+                    # 没有配置签到状态查询函数，直接执行签到
+                    check_in_result = self.execute_check_in(client, headers, api_user)
+                    if not check_in_result.get("success"):
+                        return False, {"error": check_in_result.get("error", "Check-in failed")}
             else:
                 print(f"ℹ️ {self.account_name}: Check-in completed automatically (triggered by user info request)")
 
@@ -933,29 +1079,34 @@ class CheckIn:
         finally:
             client.close()
 
-    async def check_in_with_github(self, username: str, password: str, waf_cookies: dict) -> tuple[bool, dict]:
-        """使用 GitHub 账号执行签到操作"""
+    async def check_in_with_github(
+        self,
+        username: str,
+        password: str,
+        bypass_cookies: dict,
+        common_headers: dict,
+    ) -> tuple[bool, dict]:
+        """使用 GitHub 账号执行签到操作
+        
+        Args:
+            username: GitHub 用户名
+            password: GitHub 密码
+            bypass_cookies: bypass cookies
+            common_headers: 公用请求头（包含 User-Agent 和可能的 Client Hints）
+        """
         print(
             f"ℹ️ {self.account_name}: Executing check-in with GitHub account (using proxy: {'true' if self.http_proxy_config else 'false'})"
         )
 
         client = httpx.Client(http2=True, timeout=30.0, proxy=self.http_proxy_config)
         try:
-            client.cookies.update(waf_cookies)
+            client.cookies.update(bypass_cookies)
 
-            headers = {
-                "User-Agent": get_random_user_agent(),
-                "Accept": "application/json, text/plain, */*",
-                "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-                "Accept-Encoding": "gzip, deflate, br, zstd",
-                "Referer": self.provider_config.get_login_url(),
-                "Origin": self.provider_config.origin,
-                "Connection": "keep-alive",
-                "Sec-Fetch-Dest": "empty",
-                "Sec-Fetch-Mode": "cors",
-                "Sec-Fetch-Site": "same-origin",
-                self.provider_config.api_user_key: "-1",
-            }
+            # 使用传入的公用请求头，并添加动态头部
+            headers = common_headers.copy()
+            headers[self.provider_config.api_user_key] = "-1"
+            headers["Referer"] = self.provider_config.get_login_url()
+            headers["Origin"] = self.provider_config.origin
 
             # 获取 OAuth 客户端 ID
             # 优先使用 provider_config 中的 client_id
@@ -1004,6 +1155,7 @@ class CheckIn:
                 auth_state=auth_state_result.get("state"),
                 auth_cookies=auth_state_result.get("cookies", []),
                 cache_file_path=cache_file_path,
+                need_browser_headers=self.provider_config.needs_cf_clearance()
             )
 
             # 检查是否成功获取 cookies 和 api_user
@@ -1012,8 +1164,14 @@ class CheckIn:
                 user_cookies = result_data["cookies"]
                 api_user = result_data["api_user"]
 
-                merged_cookies = {**waf_cookies, **user_cookies}
-                return await self.check_in_with_cookies(merged_cookies, api_user)
+                # 如果 OAuth 登录返回了 browser_headers，用它更新 common_headers
+                updated_headers = common_headers.copy()
+                if "browser_headers" in result_data and result_data["browser_headers"]:
+                    print(f"ℹ️ {self.account_name}: Updating headers with OAuth browser fingerprint")
+                    updated_headers.update(result_data["browser_headers"])
+
+                merged_cookies = {**bypass_cookies, **user_cookies}
+                return await self.check_in_with_cookies(merged_cookies, updated_headers, api_user)
             elif success and "code" in result_data and "state" in result_data:
                 # 收到 OAuth code，通过 HTTP 调用回调接口获取 api_user
                 print(f"ℹ️ {self.account_name}: Received OAuth code, calling callback API")
@@ -1026,7 +1184,13 @@ class CheckIn:
                     for cookie_dict in auth_cookies_list:
                         client.cookies.set(cookie_dict["name"], cookie_dict["value"])
 
-                    response = client.get(callback_url, headers=headers, timeout=30)
+                    # 如果 OAuth 登录返回了 browser_headers，用它更新 common_headers
+                    updated_headers = common_headers.copy()
+                    if "browser_headers" in result_data and result_data["browser_headers"]:
+                        print(f"ℹ️ {self.account_name}: Updating headers with OAuth browser fingerprint")
+                        updated_headers.update(result_data["browser_headers"])
+
+                    response = client.get(callback_url, headers=updated_headers, timeout=30)
 
                     if response.status_code == 200:
                         json_data = response_resolve(response, "github_oauth_callback", self.account_name)
@@ -1045,8 +1209,8 @@ class CheckIn:
                                 print(
                                     f"ℹ️ {self.account_name}: Extracted {len(user_cookies)} user cookies: {list(user_cookies.keys())}"
                                 )
-                                merged_cookies = {**waf_cookies, **user_cookies}
-                                return await self.check_in_with_cookies(merged_cookies, api_user)
+                                merged_cookies = {**bypass_cookies, **user_cookies}
+                                return await self.check_in_with_cookies(merged_cookies, updated_headers, api_user)
                             else:
                                 print(f"❌ {self.account_name}: No user ID in callback response")
                                 return False, {"error": "No user ID in OAuth callback response"}
@@ -1074,14 +1238,16 @@ class CheckIn:
         self,
         username: str,
         password: str,
-        waf_cookies: dict,
+        bypass_cookies: dict,
+        common_headers: dict,
     ) -> tuple[bool, dict]:
         """使用 Linux.do 账号执行签到操作
 
         Args:
             username: Linux.do 用户名
             password: Linux.do 密码
-            waf_cookies: WAF cookies
+            bypass_cookies: bypass cookies
+            common_headers: 公用请求头（包含 User-Agent 和可能的 Client Hints）
         """
         print(
             f"ℹ️ {self.account_name}: Executing check-in with Linux.do account (using proxy: {'true' if self.http_proxy_config else 'false'})"
@@ -1089,21 +1255,13 @@ class CheckIn:
 
         client = httpx.Client(http2=True, timeout=30.0, proxy=self.http_proxy_config)
         try:
-            client.cookies.update(waf_cookies)
+            client.cookies.update(bypass_cookies)
 
-            headers = {
-                "User-Agent": get_random_user_agent(),
-                "Accept": "application/json, text/plain, */*",
-                "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-                "Accept-Encoding": "gzip, deflate, br, zstd",
-                "Referer": self.provider_config.get_login_url(),
-                "Origin": self.provider_config.origin,
-                "Connection": "keep-alive",
-                "Sec-Fetch-Dest": "empty",
-                "Sec-Fetch-Mode": "cors",
-                "Sec-Fetch-Site": "same-origin",
-                self.provider_config.api_user_key: "-1",
-            }
+            # 使用传入的公用请求头，并添加动态头部
+            headers = common_headers.copy()
+            headers[self.provider_config.api_user_key] = "-1"
+            headers["Referer"] = self.provider_config.get_login_url()
+            headers["Origin"] = self.provider_config.origin
 
             # 获取 OAuth 客户端 ID
             # 优先使用 provider_config 中的 client_id
@@ -1152,6 +1310,7 @@ class CheckIn:
                 auth_state=auth_state_result["state"],
                 auth_cookies=auth_state_result.get("cookies", []),
                 cache_file_path=cache_file_path,
+                need_browser_headers=self.provider_config.needs_cf_clearance()
             )
 
             # 检查是否成功获取 cookies 和 api_user
@@ -1160,8 +1319,14 @@ class CheckIn:
                 user_cookies = result_data["cookies"]
                 api_user = result_data["api_user"]
 
-                merged_cookies = {**waf_cookies, **user_cookies}
-                return await self.check_in_with_cookies(merged_cookies, api_user)
+                # 如果 OAuth 登录返回了 browser_headers，用它更新 common_headers
+                updated_headers = common_headers.copy()
+                if "browser_headers" in result_data and result_data["browser_headers"]:
+                    print(f"ℹ️ {self.account_name}: Updating headers with OAuth browser fingerprint")
+                    updated_headers.update(result_data["browser_headers"])
+
+                merged_cookies = {**bypass_cookies, **user_cookies}
+                return await self.check_in_with_cookies(merged_cookies, updated_headers, api_user)
             elif success and "code" in result_data and "state" in result_data:
                 # 收到 OAuth code，通过 HTTP 调用回调接口获取 api_user
                 print(f"ℹ️ {self.account_name}: Received OAuth code, calling callback API")
@@ -1174,7 +1339,13 @@ class CheckIn:
                     for cookie_dict in auth_cookies_list:
                         client.cookies.set(cookie_dict["name"], cookie_dict["value"])
 
-                    response = client.get(callback_url, headers=headers, timeout=30)
+                    # 如果 OAuth 登录返回了 browser_headers，用它更新 common_headers
+                    updated_headers = common_headers.copy()
+                    if "browser_headers" in result_data and result_data["browser_headers"]:
+                        print(f"ℹ️ {self.account_name}: Updating headers with OAuth browser fingerprint")
+                        updated_headers.update(result_data["browser_headers"])
+
+                    response = client.get(callback_url, headers=updated_headers, timeout=30)
 
                     if response.status_code == 200:
                         json_data = response_resolve(response, "linuxdo_oauth_callback", self.account_name)
@@ -1193,8 +1364,8 @@ class CheckIn:
                                 print(
                                     f"ℹ️ {self.account_name}: Extracted {len(user_cookies)} user cookies: {list(user_cookies.keys())}"
                                 )
-                                merged_cookies = {**waf_cookies, **user_cookies}
-                                return await self.check_in_with_cookies(merged_cookies, api_user)
+                                merged_cookies = {**bypass_cookies, **user_cookies}
+                                return await self.check_in_with_cookies(merged_cookies, updated_headers, api_user)
                             else:
                                 print(f"❌ {self.account_name}: No user ID in callback response")
                                 return False, {"error": "No user ID in OAuth callback response"}
@@ -1220,16 +1391,70 @@ class CheckIn:
         """为单个账号执行签到操作，支持多种认证方式"""
         print(f"\n\n⏳ Starting to process {self.account_name}")
 
-        waf_cookies = {}
+        bypass_cookies = {}
+        browser_headers = None  # 浏览器指纹头部信息
+        
         if self.provider_config.needs_waf_cookies():
-            waf_cookies = await self.get_waf_cookies_with_browser()
-            if not waf_cookies:
+            bypass_cookies = await self.get_waf_cookies_with_browser()
+            if not bypass_cookies:
                 print(f"⚠️ {self.account_name}: Unable to get WAF cookies, continuing with empty cookies")
-                waf_cookies = {}  # 确保 waf_cookies 是空字典而不是 None
+                bypass_cookies = {}  # 确保 bypass_cookies 是空字典而不是 None
             else:
                 print(f"✅ {self.account_name}: WAF cookies obtained")
+        elif self.provider_config.needs_cf_clearance():
+            # get_cf_clearance_with_browser 现在返回 (cookies, browser_headers) 元组
+            cf_result = await self.get_cf_clearance_with_browser()
+            if cf_result[0]:
+                bypass_cookies = cf_result[0]
+                browser_headers = cf_result[1]
+                print(f"✅ {self.account_name}: cf_clearance cookie obtained")
+            else:
+                print(f"⚠️ {self.account_name}: Unable to get cf_clearance cookie, continuing with empty cookies")
+                bypass_cookies = {}  # 确保 bypass_cookies 是空字典而不是 None
         else:
-            print(f"ℹ️ {self.account_name}: Bypass WAF not required, using user cookies directly")
+            print(f"ℹ️ {self.account_name}: Bypass not required, using user cookies directly")
+
+        # 生成公用请求头（只生成一次 User-Agent，整个签到流程保持一致）
+        # 注意：Referer 和 Origin 不在这里设置，由各个签到方法根据实际请求动态设置
+        if browser_headers:
+            # 如果有浏览器指纹头部（来自 cf_clearance 获取），使用它
+            common_headers = {
+                "Accept": "application/json, text/plain, */*",
+                "Accept-Language": "en,en-US;q=0.9,zh;q=0.8,en-CN;q=0.7,zh-CN;q=0.6",
+                "Cache-Control": "no-store",
+                "Pragma": "no-cache",
+                "User-Agent": browser_headers.get("User-Agent", get_random_user_agent()),
+                # 添加 Client Hints 头部
+                "sec-ch-ua": browser_headers.get("sec-ch-ua", ""),
+                "sec-ch-ua-mobile": browser_headers.get("sec-ch-ua-mobile", "?0"),
+                "sec-ch-ua-platform": browser_headers.get("sec-ch-ua-platform", ""),
+                "sec-ch-ua-platform-version": browser_headers.get("sec-ch-ua-platform-version", ""),
+                "sec-ch-ua-arch": browser_headers.get("sec-ch-ua-arch", ""),
+                "sec-ch-ua-bitness": browser_headers.get("sec-ch-ua-bitness", ""),
+                "sec-ch-ua-full-version": browser_headers.get("sec-ch-ua-full-version", ""),
+                "sec-ch-ua-full-version-list": browser_headers.get("sec-ch-ua-full-version-list", ""),
+                "sec-ch-ua-model": browser_headers.get("sec-ch-ua-model", '""'),
+                "sec-fetch-dest": "empty",
+                "sec-fetch-mode": "cors",
+                "sec-fetch-site": "same-origin",
+            }
+            print(f"ℹ️ {self.account_name}: Using browser fingerprint headers")
+        else:
+            # 没有浏览器指纹，生成一次随机 User-Agent 并在整个流程中使用
+            random_ua = get_random_user_agent()
+            common_headers = {
+                "Accept": "application/json, text/plain, */*",
+                "Accept-Language": "en,en-US;q=0.9,zh;q=0.8,en-CN;q=0.7,zh-CN;q=0.6",
+                "Cache-Control": "no-store",
+                "Pragma": "no-cache",
+                "User-Agent": random_ua,
+                "sec-fetch-dest": "empty",
+                "sec-fetch-mode": "cors",
+                "sec-fetch-site": "same-origin",
+            }
+            print(f"ℹ️ {self.account_name}: Using random User-Agent (generated once)")
+        
+        print(f"  📱 User-Agent: {common_headers.get('User-Agent', 'N/A')[:80]}...")
 
         # 解析账号配置
         cookies_data = self.account_config.cookies
@@ -1251,9 +1476,9 @@ class CheckIn:
                         print(f"❌ {self.account_name}: API user identifier not found for cookies")
                         results.append(("cookies", False, {"error": "API user identifier not found"}))
                     else:
-                        # 使用已有 cookies 执行签到
-                        all_cookies = {**waf_cookies, **user_cookies}
-                        success, user_info = await self.check_in_with_cookies(all_cookies, api_user)
+                        # 使用已有 cookies 执行签到，传入公用请求头
+                        all_cookies = {**bypass_cookies, **user_cookies}
+                        success, user_info = await self.check_in_with_cookies(all_cookies, common_headers, api_user)
                         if success:
                             print(f"✅ {self.account_name}: Cookies authentication successful")
                             results.append(("cookies", True, user_info))
@@ -1274,8 +1499,10 @@ class CheckIn:
                     print(f"❌ {self.account_name}: Incomplete GitHub account information")
                     results.append(("github", False, {"error": "Incomplete GitHub account information"}))
                 else:
-                    # 使用 GitHub 账号执行签到
-                    success, user_info = await self.check_in_with_github(username, password, waf_cookies)
+                    # 使用 GitHub 账号执行签到，传入公用请求头
+                    success, user_info = await self.check_in_with_github(
+                        username, password, bypass_cookies, common_headers
+                    )
                     if success:
                         print(f"✅ {self.account_name}: GitHub authentication successful")
                         results.append(("github", True, user_info))
@@ -1296,11 +1523,12 @@ class CheckIn:
                     print(f"❌ {self.account_name}: Incomplete Linux.do account information")
                     results.append(("linux.do", False, {"error": "Incomplete Linux.do account information"}))
                 else:
-                    # 使用 Linux.do 账号执行签到
+                    # 使用 Linux.do 账号执行签到，传入公用请求头
                     success, user_info = await self.check_in_with_linuxdo(
                         username,
                         password,
-                        waf_cookies,
+                        bypass_cookies,
+                        common_headers,
                     )
                     if success:
                         print(f"✅ {self.account_name}: Linux.do authentication successful")
