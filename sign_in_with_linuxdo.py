@@ -9,6 +9,7 @@ from urllib.parse import urlparse, parse_qs
 from camoufox.async_api import AsyncCamoufox
 from utils.browser_utils import filter_cookies, take_screenshot, save_page_content_to_file
 from utils.config import ProviderConfig
+from utils.get_headers import get_browser_headers, print_browser_headers
 
 
 class LinuxDoSignIn:
@@ -40,6 +41,7 @@ class LinuxDoSignIn:
         auth_state: str,
         auth_cookies: list,
         cache_file_path: str = "",
+        need_browser_headers: bool = False,
     ) -> tuple[bool, dict]:
         """使用 Linux.do 账号执行登录授权
 
@@ -48,6 +50,7 @@ class LinuxDoSignIn:
             auth_state: OAuth 认证状态
             auth_cookies: OAuth 认证 cookies
             cache_file_path: 缓存文件
+            need_browser_headers: 是否需要获取浏览器指纹头部信息（用于 Cloudflare 验证）
 
         Returns:
             (成功标志, 用户信息字典)
@@ -206,7 +209,15 @@ class LinuxDoSignIn:
                             restore_cookies = await page.context.cookies()
                             user_cookies = filter_cookies(restore_cookies, self.provider_config.origin)
 
-                            return True, {"cookies": user_cookies, "api_user": api_user}
+                            result = {"cookies": user_cookies, "api_user": api_user}
+                            
+                            # 如果需要获取浏览器指纹头部信息
+                            if need_browser_headers:
+                                browser_headers = await get_browser_headers(page)
+                                print_browser_headers(self.account_name, browser_headers)
+                                result["browser_headers"] = browser_headers
+
+                            return True, result
                         else:
                             print(f"⚠️ {self.account_name}: OAuth callback received but no user ID found")
                             await take_screenshot(page, "oauth_failed_no_user_id_bypass", self.account_name)
@@ -216,6 +227,11 @@ class LinuxDoSignIn:
                             # 如果 query 中包含 code，说明 OAuth 回调成功
                             if "code" in query_params:
                                 print(f"✅ {self.account_name}: OAuth code received: {query_params.get('code')}")
+                                # 如果需要获取浏览器指纹头部信息
+                                if need_browser_headers:
+                                    browser_headers = await get_browser_headers(page)
+                                    print_browser_headers(self.account_name, browser_headers)
+                                    query_params["browser_headers"] = browser_headers
                                 return True, query_params
                             else:
                                 print(f"❌ {self.account_name}: OAuth failed, no code in callback")
