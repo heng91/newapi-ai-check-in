@@ -40,6 +40,10 @@ class CheckIn:
         self.account_config = account_config
         self.provider_config = provider_config
 
+        # 将全局代理存入 account_config.extra，供 get_cdk 和 check_in_status 等函数使用
+        if global_proxy:
+            self.account_config.extra["global_proxy"] = global_proxy
+
         # 代理优先级: 账号配置 > 全局配置
         self.camoufox_proxy_config = account_config.proxy if account_config.proxy else global_proxy
         # httpx.Client proxy 转换
@@ -715,14 +719,23 @@ class CheckIn:
         client: httpx.Client,
         headers: dict,
         api_user: str | int,
-    ):
-        """执行签到请求"""
+    ) -> dict:
+        """执行签到请求
+        
+        Returns:
+            包含 success, message, data 等信息的字典
+        """
         print(f"🌐 {self.account_name}: Executing check-in")
 
         checkin_headers = headers.copy()
         checkin_headers.update({"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"})
 
-        response = client.post(self.provider_config.get_sign_in_url(api_user), headers=checkin_headers, timeout=30)
+        check_in_url = self.provider_config.get_check_in_url(api_user)
+        if not check_in_url:
+            print(f"❌ {self.account_name}: No check-in URL configured")
+            return {"success": False, "error": "No check-in URL configured"}
+
+        response = client.post(check_in_url, headers=checkin_headers, timeout=30)
 
         print(f"📨 {self.account_name}: Response status code {response.status_code}")
 
@@ -733,10 +746,10 @@ class CheckIn:
                 # 如果不是 JSON 响应（可能是 HTML），检查是否包含成功标识
                 if "success" in response.text.lower():
                     print(f"✅ {self.account_name}: Check-in successful!")
-                    return True
+                    return {"success": True, "message": "Check-in successful"}
                 else:
                     print(f"❌ {self.account_name}: Check-in failed - Invalid response format")
-                    return False
+                    return {"success": False, "error": "Invalid response format"}
 
             # 检查签到结果
             message = json_data.get("message", json_data.get("msg", ""))
@@ -746,16 +759,31 @@ class CheckIn:
                 or json_data.get("code") == 0
                 or json_data.get("success")
                 or "已经签到" in message
+                or "签到成功" in message
             ):
-                print(f"✅ {self.account_name}: Check-in successful!")
-                return True
+                # 提取签到数据
+                check_in_data = json_data.get("data", {})
+                checkin_date = check_in_data.get("checkin_date", "")
+                quota_awarded = check_in_data.get("quota_awarded", 0)
+                
+                if quota_awarded:
+                    quota_display = round(quota_awarded / 500000, 2)
+                    print(f"✅ {self.account_name}: Check-in successful! Date: {checkin_date}, Quota awarded: ${quota_display}")
+                else:
+                    print(f"✅ {self.account_name}: Check-in successful! {message}")
+                
+                return {
+                    "success": True,
+                    "message": message or "Check-in successful",
+                    "data": check_in_data,
+                }
             else:
                 error_msg = json_data.get("msg", json_data.get("message", "Unknown error"))
                 print(f"❌ {self.account_name}: Check-in failed - {error_msg}")
-                return False
+                return {"success": False, "error": error_msg}
         else:
             print(f"❌ {self.account_name}: Check-in failed - HTTP {response.status_code}")
-            return False
+            return {"success": False, "error": f"HTTP {response.status_code}"}
 
     async def execute_topup(
         self,
@@ -883,10 +911,35 @@ class CheckIn:
                 self.provider_config.api_user_key: f"{api_user}",
             }
 
+            # 检查是否需要手动签到
             if self.provider_config.needs_manual_check_in():
-                success = self.execute_check_in(client, headers, api_user)
-                if not success:
-                    return False, {"error": "Check-in failed"}
+                # 如果配置了签到状态查询函数，先检查是否已签到
+                if self.provider_config.has_check_in_status():
+                    checked_in_today = self.provider_config.check_in_status(
+                        provider_config=self.provider_config,
+                        account_config=self.account_config,
+                        cookies=cookies,
+                        headers=headers,
+                    )
+                    if checked_in_today:
+                        print(f"ℹ️ {self.account_name}: Already checked in today, skipping check-in")
+                    else:
+                        # 未签到，执行签到
+                        check_in_result = self.execute_check_in(client, headers, api_user)
+                        if not check_in_result.get("success"):
+                            return False, {"error": check_in_result.get("error", "Check-in failed")}
+                        # 签到成功后再次查询状态（显示最新状态）
+                        self.provider_config.check_in_status(
+                            provider_config=self.provider_config,
+                            account_config=self.account_config,
+                            cookies=cookies,
+                            headers=headers,
+                        )
+                else:
+                    # 没有配置签到状态查询函数，直接执行签到
+                    check_in_result = self.execute_check_in(client, headers, api_user)
+                    if not check_in_result.get("success"):
+                        return False, {"error": check_in_result.get("error", "Check-in failed")}
             else:
                 print(f"ℹ️ {self.account_name}: Check-in completed automatically (triggered by user info request)")
 

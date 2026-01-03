@@ -8,7 +8,8 @@ import os
 from dataclasses import dataclass, field
 from typing import Callable, Dict, Generator, List, Literal
 
-from utils.signature import aiai_li_sign_in_url
+from utils.get_path import get_aiai_li_check_in_path
+from utils.get_check_in_status import newapi_check_in_status
 from utils.get_cdk import (
     get_runawaytime_cdk,
     get_x666_cdk,
@@ -21,6 +22,16 @@ from utils.get_cdk import (
 CdkGetterFunc = Callable[["AccountConfig"], Generator[str, None, None]]
 
 
+# 签到状态查询函数类型：接收 ProviderConfig 和 AccountConfig 参数，返回 bool（今日是否已签到）
+# 函数签名: (provider_config, account_config, cookies, headers) -> bool
+# 代理配置从 account_config.proxy 或 account_config.get("global_proxy") 获取
+# headers 中已包含 api_user_key，无需单独传递 api_user
+CheckInStatusFunc = Callable[
+    ["ProviderConfig", "AccountConfig", dict, dict],
+    bool
+]
+
+
 @dataclass
 class ProviderConfig:
     """Provider 配置"""
@@ -30,7 +41,8 @@ class ProviderConfig:
     login_path: str = "/login"
     status_path: str = "/api/status"
     auth_state_path: str = "api/oauth/state"
-    sign_in_path: str | Callable[[str, str | int], str] | None = "/api/user/sign_in"
+    check_in_path: str | Callable[[str, str | int], str] | None = None
+    check_in_status: CheckInStatusFunc | None = None  # 签到状态查询函数，返回 bool
     user_info_path: str = "/api/user/self"
     topup_path: str | None = "/api/user/topup"
     get_cdk: CdkGetterFunc | None = None
@@ -56,7 +68,8 @@ class ProviderConfig:
             login_path=data.get("login_path", "/login"),
             status_path=data.get("status_path", "/api/status"),
             auth_state_path=data.get("auth_state_path", "api/oauth/state"),
-            sign_in_path=data.get("sign_in_path", "/api/user/sign_in"),
+            check_in_path=data.get("check_in_path"),
+            check_in_status=data.get("check_in_status"),  # 函数类型无法从 JSON 解析，需要代码中设置
             user_info_path=data.get("user_info_path", "/api/user/self"),
             topup_path=data.get("topup_path", "/api/user/topup"),
             get_cdk=data.get("get_cdk"),  # 函数类型无法从 JSON 解析，需要代码中设置
@@ -75,7 +88,7 @@ class ProviderConfig:
 
     def needs_manual_check_in(self) -> bool:
         """判断是否需要手动调用签到接口"""
-        return self.sign_in_path is not None
+        return self.check_in_path is not None
 
     def needs_manual_topup(self) -> bool:
         """判断是否需要手动执行充值（通过 CDK）
@@ -96,10 +109,10 @@ class ProviderConfig:
         """获取认证状态 URL"""
         return f"{self.origin}{self.auth_state_path}"
 
-    def get_sign_in_url(self, user_id: str | int) -> str | None:
+    def get_check_in_url(self, user_id: str | int) -> str | None:
         """获取签到 URL
 
-        如果 sign_in_path 是函数，则调用函数生成带签名的 URL
+        如果 check_in_path 是函数，则调用函数生成带签名的 URL
 
         Args:
             user_id: 用户 ID
@@ -107,15 +120,19 @@ class ProviderConfig:
         Returns:
             str | None: 签到 URL，如果不需要签到则返回 None
         """
-        if not self.sign_in_path:
+        if not self.check_in_path:
             return None
 
         # 如果是函数，则调用函数生成 URL
-        if callable(self.sign_in_path):
-            return self.sign_in_path(self.origin, user_id)
+        if callable(self.check_in_path):
+            return self.check_in_path(self.origin, user_id)
 
         # 否则拼接路径
-        return f"{self.origin}{self.sign_in_path}"
+        return f"{self.origin}{self.check_in_path}"
+
+    def has_check_in_status(self) -> bool:
+        """判断是否配置了签到状态查询函数"""
+        return self.check_in_status is not None
 
     def get_user_info_url(self) -> str:
         """获取用户信息 URL"""
@@ -263,7 +280,8 @@ class AppConfig:
                 login_path="/login",
                 status_path="/api/status",
                 auth_state_path="/api/oauth/state",
-                sign_in_path="/api/user/sign_in",
+                check_in_path="/api/user/sign_in",
+                check_in_status=None,
                 user_info_path="/api/user/self",
                 topup_path="/api/user/topup",
                 api_user_key="new-api-user",
@@ -280,7 +298,8 @@ class AppConfig:
                 login_path="/login",
                 status_path="/api/status",
                 auth_state_path="/api/oauth/state",
-                sign_in_path=None,  # 无需签到接口，查询用户信息时自动完成签到
+                check_in_path=None,  # 无需签到接口，查询用户信息时自动完成签到
+                check_in_status=None,
                 user_info_path="/api/user/self",
                 topup_path="/api/user/topup",
                 api_user_key="new-api-user",
@@ -297,7 +316,8 @@ class AppConfig:
                 login_path="/login",
                 status_path="/api/status",
                 auth_state_path="/api/oauth/state",
-                sign_in_path="/api/user/checkin",
+                check_in_path="/api/user/checkin",
+                check_in_status=None,
                 user_info_path="/api/user/self",
                 topup_path="/api/user/topup",
                 api_user_key="new-api-user",
@@ -314,7 +334,8 @@ class AppConfig:
                 login_path="/login",
                 status_path="/api/status",
                 auth_state_path="/api/oauth/state",
-                sign_in_path=aiai_li_sign_in_url,
+                check_in_path=get_aiai_li_check_in_path,
+                check_in_status=None,
                 user_info_path="/api/user/self",
                 topup_path="/api/user/topup",
                 api_user_key="new-api-user",
@@ -331,7 +352,8 @@ class AppConfig:
                 login_path="/login",
                 status_path="/api/status",
                 auth_state_path="/api/oauth/state",
-                sign_in_path="/api/user/check_in",
+                check_in_path="/api/user/check_in",
+                check_in_status=None,
                 user_info_path="/api/user/self",
                 topup_path="/api/user/topup",
                 api_user_key="veloera-user",
@@ -348,7 +370,8 @@ class AppConfig:
                 login_path="/login",
                 status_path="/api/status",
                 auth_state_path="/api/oauth/state",
-                sign_in_path=None,  # 签到通过 fuli.hxi.me 完成
+                check_in_path="/api/user/checkin",  # 标准 newapi checkin 接口
+                check_in_status=newapi_check_in_status,  # 签到状态查询函数，返回 bool
                 user_info_path="/api/user/self",
                 topup_path="/api/user/topup",
                 get_cdk=get_runawaytime_cdk,
@@ -366,7 +389,8 @@ class AppConfig:
                 login_path="/login",
                 status_path="/api/status",
                 auth_state_path="/api/oauth/state",
-                sign_in_path=None,  # 签到通过 qd.x666.me 完成
+                check_in_path=None,  # 签到通过 qd.x666.me 完成
+                check_in_status=None,
                 user_info_path="/api/user/self",
                 topup_path="/api/user/topup",
                 get_cdk=get_x666_cdk,

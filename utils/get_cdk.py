@@ -31,13 +31,14 @@ def get_runawaytime_cdk(account_config: "AccountConfig") -> Generator[str, None,
     """
     account_name = account_config.get_display_name()
     fuli_cookies = account_config.get("fuli_cookies")
-    proxy = account_config.proxy or account_config.get("global_proxy")
     
     if not fuli_cookies:
         print(f"❌ {account_name}: fuli_cookies not found in account config")
         return
     
-    http_proxy = proxy_resolve(proxy)
+    # 代理优先级: 账号配置 > 全局配置
+    proxy_config = account_config.proxy or account_config.get("global_proxy")
+    http_proxy = proxy_resolve(proxy_config)
     
     try:
         client = httpx.Client(http2=False, timeout=30.0, proxy=http_proxy)
