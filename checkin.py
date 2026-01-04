@@ -1430,22 +1430,27 @@ class CheckIn:
         browser_headers = None  # 浏览器指纹头部信息
         
         if self.provider_config.needs_waf_cookies():
-            bypass_cookies = await self.get_waf_cookies_with_browser()
-            if not bypass_cookies:
-                print(f"⚠️ {self.account_name}: Unable to get WAF cookies, continuing with empty cookies")
-                bypass_cookies = {}  # 确保 bypass_cookies 是空字典而不是 None
-            else:
+            waf_cookies = await self.get_waf_cookies_with_browser()
+            if waf_cookies:
+                bypass_cookies = waf_cookies
                 print(f"✅ {self.account_name}: WAF cookies obtained")
+            else:
+                print(f"⚠️ {self.account_name}: Unable to get WAF cookies, continuing with empty cookies")
+
         elif self.provider_config.needs_cf_clearance():
             # get_cf_clearance_with_browser 现在返回 (cookies, browser_headers) 元组
             cf_result = await self.get_cf_clearance_with_browser()
+            
             if cf_result[0]:
                 bypass_cookies = cf_result[0]
-                browser_headers = cf_result[1]
-                print(f"✅ {self.account_name}: cf_clearance cookie obtained")
+                print(f"✅ {self.account_name}: Cloudflare cookies obtained")
             else:
-                print(f"⚠️ {self.account_name}: Unable to get cf_clearance cookie, continuing with empty cookies")
-                bypass_cookies = {}  # 确保 bypass_cookies 是空字典而不是 None
+                print(f"⚠️ {self.account_name}: Unable to get Cloudflare cookies, continuing with empty cookies")
+
+            # 因为 Cloudflare 验证需要一致的浏览器指纹
+            if cf_result[1]:
+                browser_headers = cf_result[1]
+                print(f"✅ {self.account_name}: Cloudflare fingerprint headers obtained")
         else:
             print(f"ℹ️ {self.account_name}: Bypass not required, using user cookies directly")
 
