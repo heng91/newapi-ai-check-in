@@ -71,6 +71,7 @@ class CheckIn:
                 locale="en-US",
                 geoip=True if self.camoufox_proxy_config else False,
                 proxy=self.camoufox_proxy_config,
+                os="macos",  # 强制使用 macOS 指纹，避免跨平台指纹不一致问题
             ) as browser:
                 page = await browser.new_page()
 
@@ -143,6 +144,7 @@ class CheckIn:
                 locale="en-US",
                 geoip=True if self.camoufox_proxy_config else False,
                 proxy=self.camoufox_proxy_config,
+                os="macos",  # 强制使用 macOS 指纹，避免跨平台指纹不一致问题
                 config={
                     "forceScopeAccess": True,
                 }
@@ -273,6 +275,7 @@ class CheckIn:
                 locale="en-US",
                 geoip=True if self.camoufox_proxy_config else False,
                 proxy=self.camoufox_proxy_config,
+                os="macos",  # 强制使用 macOS 指纹，避免跨平台指纹不一致问题
             ) as browser:
                 page = await browser.new_page()
 
@@ -443,6 +446,7 @@ class CheckIn:
                 locale="en-US",
                 geoip=True if self.camoufox_proxy_config else False,
                 proxy=self.camoufox_proxy_config,
+                os="macos",  # 强制使用 macOS 指纹，避免跨平台指纹不一致问题
             ) as browser:
                 page = await browser.new_page()
 
@@ -579,6 +583,7 @@ class CheckIn:
                 locale="en-US",
                 geoip=True if self.camoufox_proxy_config else False,
                 proxy=self.camoufox_proxy_config,
+                os="macos",  # 强制使用 macOS 指纹，避免跨平台指纹不一致问题
             ) as browser:
                 page = await browser.new_page()
 
@@ -737,6 +742,7 @@ class CheckIn:
                 locale="en-US",
                 geoip=True if self.camoufox_proxy_config else False,
                 proxy=self.camoufox_proxy_config,
+                os="macos",  # 强制使用 macOS 指纹，避免跨平台指纹不一致问题
             ) as browser:
                 page = await browser.new_page()
 
@@ -1503,8 +1509,6 @@ class CheckIn:
                 "sec-fetch-site": "same-origin",
             }
             print(f"ℹ️ {self.account_name}: Using random User-Agent (generated once)")
-        
-        print(f"  📱 User-Agent: {common_headers.get('User-Agent', 'N/A')[:80]}...")
 
         # 解析账号配置
         cookies_data = self.account_config.cookies

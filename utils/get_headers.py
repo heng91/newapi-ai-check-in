@@ -52,24 +52,32 @@ async def get_browser_headers(page) -> dict:
             const chromeVersion = chromeMatch[1];
             const chromeMajor = chromeVersion.split('.')[0];
             
-            // 检测平台
-            const platform = navigator.platform || 'Unknown';
+            // 从 User-Agent 中检测平台，而不是使用 navigator.platform
+            // 因为在某些环境（如 GitHub Actions Windows）中，navigator.platform 可能返回错误的值
+            // 这会导致 User-Agent 和 platform 不一致，被 Cloudflare 检测为 Bot
             let platformName = 'Unknown';
             let platformVersion = '10.0.0';
             let arch = 'x86';
             let bitness = '64';
             let isMobile = false;
             
-            if (platform.includes('Win')) {
+            // 从 User-Agent 解析平台信息
+            if (ua.includes('Windows NT')) {
                 platformName = 'Windows';
                 platformVersion = '10.0.0';
-            } else if (platform.includes('Mac')) {
+                arch = 'x86';
+            } else if (ua.includes('Macintosh') || ua.includes('Mac OS X')) {
                 platformName = 'macOS';
                 platformVersion = '15.0.0';
                 arch = 'arm';
-            } else if (platform.includes('Linux')) {
+            } else if (ua.includes('Linux') && !ua.includes('Android')) {
                 platformName = 'Linux';
                 platformVersion = '6.5.0';
+                arch = 'x86';
+            } else if (ua.includes('Android')) {
+                platformName = 'Android';
+                platformVersion = '14.0.0';
+                isMobile = true;
             }
             
             // 构建 sec-ch-ua 头部（仅 Chromium 系浏览器）

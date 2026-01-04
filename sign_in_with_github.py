@@ -68,6 +68,7 @@ class GitHubSignIn:
             headless=False,
             humanize=True,
             locale="en-US",
+            os="macos",  # 强制使用 macOS 指纹，避免跨平台指纹不一致问题
         ) as browser:
             # 只有在缓存文件存在时才加载 storage_state
             storage_state = cache_file_path if os.path.exists(cache_file_path) else None
