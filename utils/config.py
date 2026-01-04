@@ -359,11 +359,11 @@ class AppConfig:
                 login_path="/login",
                 status_path="/api/status",
                 auth_state_path="/api/oauth/state",
-                check_in_path="/api/user/check_in",
-                check_in_status=None,
+                check_in_path="/api/user/checkin",  # 标准 newapi checkin 接口
+                check_in_status=newapi_check_in_status,  # 签到状态查询函数，返回 bool
                 user_info_path="/api/user/self",
                 topup_path="/api/user/topup",
-                api_user_key="veloera-user",
+                api_user_key="new-api-user",
                 github_client_id=None,
                 github_auth_path=None,
                 linuxdo_client_id="FNvJFnlfpfDM2mKDp8HTElASdjEwUriS",
