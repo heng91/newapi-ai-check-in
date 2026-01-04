@@ -76,6 +76,9 @@ def print_browser_headers(account_name: str, browser_headers: dict) -> None:
         browser_headers: 浏览器指纹头部字典
     """
     print(f"ℹ️ {account_name}: Browser fingerprint captured:")
-    print(f"  📱 User-Agent: {browser_headers.get('User-Agent', 'N/A')[:80]}...")
-    print(f"  🔧 sec-ch-ua: {browser_headers.get('sec-ch-ua', 'N/A')}")
-    print(f"  💻 sec-ch-ua-platform: {browser_headers.get('sec-ch-ua-platform', 'N/A')}")
+    for key, value in browser_headers.items():
+        # User-Agent 较长，截断显示
+        if key == "User-Agent":
+            print(f"  📱 {key}: {value[:100]}...")
+        else:
+            print(f"  🔧 {key}: {value}")
