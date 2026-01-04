@@ -44,7 +44,7 @@ class GitHubSignIn:
         auth_cookies: list,
         cache_file_path: str = "",
         need_browser_headers: bool = False,
-    ) -> tuple[bool, dict]:
+    ) -> tuple[bool, dict, dict | None]:
         """使用 GitHub 账号执行登录授权
 
         Args:
@@ -55,7 +55,7 @@ class GitHubSignIn:
             need_browser_headers: 是否需要获取浏览器指纹头部信息（用于 Cloudflare 验证）
 
         Returns:
-            (成功标志, 结果字典)
+            (成功标志, 结果字典, 浏览器指纹头部信息或None)
         """
         print(f"ℹ️ {self.account_name}: Executing sign-in with GitHub account")
         print(
@@ -227,7 +227,7 @@ class GitHubSignIn:
                     except Exception as e:
                         print(f"❌ {self.account_name}: Error occurred while signing in GitHub: {e}")
                         await take_screenshot(page, "github_signin_error", self.account_name)
-                        return False, {"error": "GitHub sign-in error"}
+                        return False, {"error": "GitHub sign-in error"}, None
 
                     # 登录后访问授权页面
                     try:
@@ -251,12 +251,14 @@ class GitHubSignIn:
                     except Exception as e:
                         print(f"❌ {self.account_name}: Error occurred while authorization approve: {e}")
                         await take_screenshot(page, "github_auth_approval_failed", self.account_name)
-                        return False, {"error": "GitHub authorization approval failed"}
+                        return False, {"error": "GitHub authorization approval failed"}, None
 
                 # 统一处理授权逻辑（无论是否通过缓存登录）
                 try:
-                    print(f"ℹ️ {self.account_name}: Waiting for OAuth callback...")
-                    await page.wait_for_url(f"**{self.provider_config.origin}/oauth/**", timeout=30000)
+                    # 使用配置的 OAuth 回调路径匹配模式
+                    redirect_pattern = self.provider_config.get_github_auth_redirect_pattern()
+                    print(f"ℹ️ {self.account_name}: Waiting for OAuth callback to: {redirect_pattern}")
+                    await page.wait_for_url(redirect_pattern, timeout=30000)
 
                     # 从 localStorage 获取 user 对象并提取 id
                     api_user = None
@@ -289,12 +291,12 @@ class GitHubSignIn:
                         result = {"cookies": user_cookies, "api_user": api_user}
                         
                         # 如果需要获取浏览器指纹头部信息
+                        browser_headers = None
                         if need_browser_headers:
                             browser_headers = await get_browser_headers(page)
                             print_browser_headers(self.account_name, browser_headers)
-                            result["browser_headers"] = browser_headers
 
-                        return True, result
+                        return True, result, browser_headers
                     else:
                         print(f"⚠️ {self.account_name}: OAuth callback received but no user ID found")
                         await take_screenshot(page, "github_oauth_failed_no_user_id", self.account_name)
@@ -306,16 +308,16 @@ class GitHubSignIn:
                         if "code" in query_params:
                             print(f"✅ {self.account_name}: OAuth code received: {query_params.get('code')}")
                             # 如果需要获取浏览器指纹头部信息
+                            browser_headers = None
                             if need_browser_headers:
                                 browser_headers = await get_browser_headers(page)
                                 print_browser_headers(self.account_name, browser_headers)
-                                query_params["browser_headers"] = browser_headers
-                            return True, query_params
+                            return True, query_params, browser_headers
                         else:
                             print(f"❌ {self.account_name}: OAuth failed, no code in callback")
                             return False, {
                                 "error": "GitHub OAuth failed - no code in callback",
-                            }
+                            }, None
 
                 except Exception as e:
                     print(
@@ -323,12 +325,12 @@ class GitHubSignIn:
                         f"Current page is: {page.url}"
                     )
                     await take_screenshot(page, "github_authorization_failed", self.account_name)
-                    return False, {"error": "GitHub authorization failed"}
+                    return False, {"error": "GitHub authorization failed"}, None
 
             except Exception as e:
                 print(f"❌ {self.account_name}: Error occurred while processing GitHub page: {e}")
                 await take_screenshot(page, "github_page_navigation_error", self.account_name)
-                return False, {"error": "GitHub page navigation error"}
+                return False, {"error": "GitHub page navigation error"}, None
             finally:
                 await page.close()
                 await context.close()

@@ -42,7 +42,7 @@ class LinuxDoSignIn:
         auth_cookies: list,
         cache_file_path: str = "",
         need_browser_headers: bool = False,
-    ) -> tuple[bool, dict]:
+    ) -> tuple[bool, dict, dict | None]:
         """使用 Linux.do 账号执行登录授权
 
         Args:
@@ -53,7 +53,7 @@ class LinuxDoSignIn:
             need_browser_headers: 是否需要获取浏览器指纹头部信息（用于 Cloudflare 验证）
 
         Returns:
-            (成功标志, 用户信息字典)
+            (成功标志, 用户信息字典, 浏览器指纹头部信息或None)
         """
         print(f"ℹ️ {self.account_name}: Executing sign-in with Linux.do")
         print(
@@ -158,7 +158,7 @@ class LinuxDoSignIn:
                     except Exception as e:
                         print(f"❌ {self.account_name}: Error occurred while signing in linux.do: {e}")
                         await take_screenshot(page, "signin_bypass_error", self.account_name)
-                        return False, {"error": "Linux.do sign-in error"}
+                        return False, {"error": "Linux.do sign-in error"}, None
 
                     # 登录后访问授权页面
                     try:
@@ -167,7 +167,7 @@ class LinuxDoSignIn:
                     except Exception as e:
                         print(f"❌ {self.account_name}: Failed to navigate to authorization page: {e}")
                         await take_screenshot(page, "auth_page_navigation_failed_bypass", self.account_name)
-                        return False, {"error": "Linux.do authorization page navigation failed"}
+                        return False, {"error": "Linux.do authorization page navigation failed"}, None
 
                 # 统一处理授权逻辑（无论是否通过缓存登录）
                 try:
@@ -179,7 +179,10 @@ class LinuxDoSignIn:
                     if allow_btn_ele:
                         print(f"ℹ️ {self.account_name}: Clicking authorization button...")
                         await allow_btn_ele.click()
-                        await page.wait_for_url(f"**{self.provider_config.origin}/oauth/**", timeout=30000)
+                        # 使用配置的 OAuth 回调路径匹配模式
+                        redirect_pattern = self.provider_config.get_linuxdo_auth_redirect_pattern()
+                        print(f"ℹ️ {self.account_name}: Waiting for redirect to: {redirect_pattern}")
+                        await page.wait_for_url(redirect_pattern, timeout=30000)
 
                         # 从 localStorage 获取 user 对象并提取 id
                         api_user = None
@@ -212,12 +215,12 @@ class LinuxDoSignIn:
                             result = {"cookies": user_cookies, "api_user": api_user}
                             
                             # 如果需要获取浏览器指纹头部信息
+                            browser_headers = None
                             if need_browser_headers:
                                 browser_headers = await get_browser_headers(page)
                                 print_browser_headers(self.account_name, browser_headers)
-                                result["browser_headers"] = browser_headers
 
-                            return True, result
+                            return True, result, browser_headers
                         else:
                             print(f"⚠️ {self.account_name}: OAuth callback received but no user ID found")
                             await take_screenshot(page, "oauth_failed_no_user_id_bypass", self.account_name)
@@ -228,20 +231,20 @@ class LinuxDoSignIn:
                             if "code" in query_params:
                                 print(f"✅ {self.account_name}: OAuth code received: {query_params.get('code')}")
                                 # 如果需要获取浏览器指纹头部信息
+                                browser_headers = None
                                 if need_browser_headers:
                                     browser_headers = await get_browser_headers(page)
                                     print_browser_headers(self.account_name, browser_headers)
-                                    query_params["browser_headers"] = browser_headers
-                                return True, query_params
+                                return True, query_params, browser_headers
                             else:
                                 print(f"❌ {self.account_name}: OAuth failed, no code in callback")
                                 return False, {
                                     "error": "Linux.do OAuth failed - no code in callback",
-                                }
+                                }, None
                     else:
                         print(f"❌ {self.account_name}: Approve button not found")
                         await take_screenshot(page, "approve_button_not_found_bypass", self.account_name)
-                        return False, {"error": "Linux.do allow button not found"}
+                        return False, {"error": "Linux.do allow button not found"}, None
 
                 except Exception as e:
                     print(
@@ -249,12 +252,12 @@ class LinuxDoSignIn:
                         f"Current page is: {page.url}"
                     )
                     await take_screenshot(page, "authorization_failed_bypass", self.account_name)
-                    return False, {"error": "Linux.do authorization failed"}
+                    return False, {"error": "Linux.do authorization failed"}, None
 
             except Exception as e:
                 print(f"❌ {self.account_name}: Error occurred while processing linux.do page: {e}")
                 await take_screenshot(page, "page_navigation_error_bypass", self.account_name)
-                return False, {"error": "Linux.do page navigation error"}
+                return False, {"error": "Linux.do page navigation error"}, None
             finally:
                 await page.close()
                 await context.close()

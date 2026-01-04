@@ -3,6 +3,29 @@ revision = 1
 requires-python = ">=3.11"
 
 [[package]]
+name = "2captcha-python-async"
+version = "1.5.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "aiofiles" },
+    { name = "httpx" },
+    { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b4/b0/667b5e7d345c4765a4b75dce8a6e50b2e5c4fb46f70a8752319a7938edd7/2captcha_python_async-1.5.1.tar.gz", hash = "sha256:c9d5b73ddac23a8bcdc1b96b075f7165945c0d79836f8370d3802d9c58ab3236", size = 32930 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c4/d9/c0dda42c84c87f592dc853d0dfaedd30cc66800b6f104003db02364581aa/2captcha_python_async-1.5.1-py3-none-any.whl", hash = "sha256:44ee4d3f8152831c6f1b6103acdb8c2d59f0cc9bbc5ddb7e389adf66359d638f", size = 27647 },
+]
+
+[[package]]
+name = "aiofiles"
+version = "25.1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/41/c3/534eac40372d8ee36ef40df62ec129bee4fdb5ad9706e58a29be53b2c970/aiofiles-25.1.0.tar.gz", hash = "sha256:a8d728f0a29de45dc521f18f07297428d56992a742f0cd2701ba86e44d23d5b2", size = 46354 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/bc/8a/340a1555ae33d7354dbca4faa54948d76d89a27ceef032c8c3bc661d003e/aiofiles-25.1.0-py3-none-any.whl", hash = "sha256:abe311e527c862958650f9438e859c1fa7568a141b22abcd015e120e86a85695", size = 14668 },
+]
+
+[[package]]
 name = "aiohappyeyeballs"
 version = "2.6.1"
 source = { registry = "https://pypi.org/simple" }
@@ -992,6 +1015,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "camoufox", extra = ["geoip"] },
     { name = "httpx", extra = ["http2"] },
+    { name = "playwright-captcha" },
     { name = "python-dotenv" },
 ]
 
@@ -1009,6 +1033,7 @@ dev = [
 requires-dist = [
     { name = "camoufox", extras = ["geoip"], specifier = ">=0.4.11" },
     { name = "httpx", extras = ["http2"], specifier = ">=0.24.0" },
+    { name = "playwright-captcha", specifier = ">=0.1.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
 ]
 
@@ -1215,6 +1240,18 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/06/2e/9db64518aebcb3d6ef6cd6d4d01da741aff912c3f0314dadb61226c6a96a/playwright-1.55.0-py3-none-win32.whl", hash = "sha256:29e6d1558ad9d5b5c19cbec0a72f6a2e35e6353cd9f262e22148685b86759f90", size = 35476046 },
     { url = "https://files.pythonhosted.org/packages/46/4f/9ba607fa94bb9cee3d4beb1c7b32c16efbfc9d69d5037fa85d10cafc618b/playwright-1.55.0-py3-none-win_amd64.whl", hash = "sha256:7eb5956473ca1951abb51537e6a0da55257bb2e25fc37c2b75af094a5c93736c", size = 35476048 },
     { url = "https://files.pythonhosted.org/packages/21/98/5ca173c8ec906abde26c28e1ecb34887343fd71cc4136261b90036841323/playwright-1.55.0-py3-none-win_arm64.whl", hash = "sha256:012dc89ccdcbd774cdde8aeee14c08e0dd52ddb9135bf10e9db040527386bd76", size = 31225543 },
+]
+
+[[package]]
+name = "playwright-captcha"
+version = "0.1.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "2captcha-python-async" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f2/c5/db6523f102bbf069746e7b6a47803cbc7f56a7e34635a504165844c09fc1/playwright_captcha-0.1.1.tar.gz", hash = "sha256:e8f2ec7e7dab84bbba5053d56aadcc1030fe76c1a5314625cd254cd009a5b9d7", size = 34124 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ec/4f/af153778ca11f7b273e4d2b40265ff1000dada009128dd661430962246fb/playwright_captcha-0.1.1-py3-none-any.whl", hash = "sha256:edcca33c2e09fd9f51ca98ef753f949c3f8ecbe38abecb4b8a30c3b79ad79f4c", size = 53164 },
 ]
 
 [[package]]

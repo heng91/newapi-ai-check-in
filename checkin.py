@@ -12,12 +12,12 @@ from urllib.parse import urlparse
 
 import httpx
 from camoufox.async_api import AsyncCamoufox
+from playwright_captcha import CaptchaType, ClickSolver, FrameworkType
 from utils.config import AccountConfig, ProviderConfig
 from utils.browser_utils import parse_cookies, get_random_user_agent, take_screenshot, aliyun_captcha_check
 from utils.http_utils import proxy_resolve, response_resolve
 from utils.topup import topup
 from utils.get_headers import get_browser_headers, print_browser_headers
-
 
 class CheckIn:
     """newapi.ai 签到管理类"""
@@ -121,7 +121,7 @@ class CheckIn:
     async def get_cf_clearance_with_browser(self) -> tuple[dict | None, dict | None]:
         """使用 Camoufox 获取 Cloudflare cf_clearance cookie（隐私模式）
         
-        等待 Cloudflare 验证通过后获取 cf_clearance cookie
+        使用 playwright-captcha 库自动点击 Cloudflare 验证按钮。
         
         Returns:
             tuple: (cf_cookies, browser_headers)
@@ -134,6 +134,7 @@ class CheckIn:
 
         with tempfile.TemporaryDirectory(prefix=f"camoufox_{self.safe_account_name}_cf_") as tmp_dir:
             print(f"ℹ️ {self.account_name}: Using temporary directory: {tmp_dir}")
+            
             async with AsyncCamoufox(
                 persistent_context=True,
                 user_data_dir=tmp_dir,
@@ -142,43 +143,42 @@ class CheckIn:
                 locale="en-US",
                 geoip=True if self.camoufox_proxy_config else False,
                 proxy=self.camoufox_proxy_config,
+                config={
+                    "forceScopeAccess": True,
+                }
             ) as browser:
                 page = await browser.new_page()
 
                 try:
                     print(f"ℹ️ {self.account_name}: Access login page to trigger Cloudflare challenge")
-                    await page.goto(self.provider_config.get_login_url(), wait_until="networkidle")
-
-                    # 等待 Cloudflare 验证完成，最多等待 60 秒
-                    max_wait_time = 60000  # 60 秒
-                    check_interval = 2000  # 每 2 秒检查一次
-                    elapsed_time = 0
-
-                    while elapsed_time < max_wait_time:
-                        # 检查是否已经获取到 cf_clearance cookie
-                        cookies = await browser.cookies()
-                        cf_clearance = None
-                        for cookie in cookies:
-                            if cookie.get("name") == "cf_clearance":
-                                cf_clearance = cookie.get("value")
-                                break
-
-                        if cf_clearance:
-                            print(f"✅ {self.account_name}: cf_clearance cookie obtained")
-                            break
-
-                        # 检查页面是否还在 Cloudflare 验证页面
+                    
+                    async with ClickSolver(
+                        framework=FrameworkType.CAMOUFOX,
+                        page=page,
+                        max_attempts=5,
+                        attempt_delay=3
+                    ) as solver:
+                        await page.goto(self.provider_config.get_login_url(), wait_until="networkidle")
+                        
+                        # 检查是否在 Cloudflare 验证页面
                         page_title = await page.title()
                         page_content = await page.content()
                         
                         if "Just a moment" in page_title or "Checking your browser" in page_content:
-                            print(f"ℹ️ {self.account_name}: Cloudflare challenge in progress, waiting...")
+                            print(f"ℹ️ {self.account_name}: Cloudflare challenge detected, auto-solving...")
+                            try:
+                                # 使用 ClickSolver 自动点击验证
+                                await solver.solve_captcha(
+                                    captcha_container=page,
+                                    captcha_type=CaptchaType.CLOUDFLARE_INTERSTITIAL
+                                )
+                                print(f"✅ {self.account_name}: Cloudflare challenge auto-solved")
+                            except Exception as solve_err:
+                                print(f"⚠️ {self.account_name}: Auto-solve failed: {solve_err}, waiting for manual verification...")
+                                # 自动求解失败，回退到手动等待
+                                await self._wait_for_cf_clearance_manually(browser, page)
                         else:
-                            # 页面已经加载完成，但可能还没有 cf_clearance
-                            print(f"ℹ️ {self.account_name}: Page loaded, checking for cf_clearance...")
-
-                        await page.wait_for_timeout(check_interval)
-                        elapsed_time += check_interval
+                            print(f"ℹ️ {self.account_name}: No Cloudflare challenge detected")
 
                     # 最终获取所有 cookies
                     cookies = await browser.cookies()
@@ -217,6 +217,43 @@ class CheckIn:
                     return None, None
                 finally:
                     await page.close()
+
+    async def _wait_for_cf_clearance_manually(self, browser, page) -> None:
+        """等待 Cloudflare 验证完成（手动）
+        
+        Args:
+            browser: Camoufox 浏览器实例
+            page: 页面实例
+        """
+        max_wait_time = 60000  # 60 秒
+        check_interval = 2000  # 每 2 秒检查一次
+        elapsed_time = 0
+
+        while elapsed_time < max_wait_time:
+            # 检查是否已经获取到 cf_clearance cookie
+            cookies = await browser.cookies()
+            cf_clearance = None
+            for cookie in cookies:
+                if cookie.get("name") == "cf_clearance":
+                    cf_clearance = cookie.get("value")
+                    break
+
+            if cf_clearance:
+                print(f"✅ {self.account_name}: cf_clearance cookie obtained")
+                break
+
+            # 检查页面是否还在 Cloudflare 验证页面
+            page_title = await page.title()
+            page_content = await page.content()
+            
+            if "Just a moment" in page_title or "Checking your browser" in page_content:
+                print(f"ℹ️ {self.account_name}: Cloudflare challenge in progress, waiting...")
+            else:
+                # 页面已经加载完成，但可能还没有 cf_clearance
+                print(f"ℹ️ {self.account_name}: Page loaded, checking for cf_clearance...")
+
+            await page.wait_for_timeout(check_interval)
+            elapsed_time += check_interval
 
     async def get_aliyun_captcha_cookies_with_browser(self) -> dict | None:
         """使用 Camoufox 获取阿里云验证 cookies"""
@@ -1150,12 +1187,11 @@ class CheckIn:
                 password=password,
             )
 
-            success, result_data = await github.signin(
+            success, result_data, oauth_browser_headers = await github.signin(
                 client_id=client_id_result["client_id"],
                 auth_state=auth_state_result.get("state"),
                 auth_cookies=auth_state_result.get("cookies", []),
-                cache_file_path=cache_file_path,
-                need_browser_headers=self.provider_config.needs_cf_clearance()
+                cache_file_path=cache_file_path
             )
 
             # 检查是否成功获取 cookies 和 api_user
@@ -1166,9 +1202,9 @@ class CheckIn:
 
                 # 如果 OAuth 登录返回了 browser_headers，用它更新 common_headers
                 updated_headers = common_headers.copy()
-                if "browser_headers" in result_data and result_data["browser_headers"]:
+                if oauth_browser_headers:
                     print(f"ℹ️ {self.account_name}: Updating headers with OAuth browser fingerprint")
-                    updated_headers.update(result_data["browser_headers"])
+                    updated_headers.update(oauth_browser_headers)
 
                 merged_cookies = {**bypass_cookies, **user_cookies}
                 return await self.check_in_with_cookies(merged_cookies, updated_headers, api_user)
@@ -1186,9 +1222,9 @@ class CheckIn:
 
                     # 如果 OAuth 登录返回了 browser_headers，用它更新 common_headers
                     updated_headers = common_headers.copy()
-                    if "browser_headers" in result_data and result_data["browser_headers"]:
+                    if oauth_browser_headers:
                         print(f"ℹ️ {self.account_name}: Updating headers with OAuth browser fingerprint")
-                        updated_headers.update(result_data["browser_headers"])
+                        updated_headers.update(oauth_browser_headers)
 
                     response = client.get(callback_url, headers=updated_headers, timeout=30)
 
@@ -1305,12 +1341,11 @@ class CheckIn:
                 password=password,
             )
 
-            success, result_data = await linuxdo.signin(
+            success, result_data, oauth_browser_headers = await linuxdo.signin(
                 client_id=client_id_result["client_id"],
                 auth_state=auth_state_result["state"],
                 auth_cookies=auth_state_result.get("cookies", []),
-                cache_file_path=cache_file_path,
-                need_browser_headers=self.provider_config.needs_cf_clearance()
+                cache_file_path=cache_file_path
             )
 
             # 检查是否成功获取 cookies 和 api_user
@@ -1321,9 +1356,9 @@ class CheckIn:
 
                 # 如果 OAuth 登录返回了 browser_headers，用它更新 common_headers
                 updated_headers = common_headers.copy()
-                if "browser_headers" in result_data and result_data["browser_headers"]:
+                if oauth_browser_headers:
                     print(f"ℹ️ {self.account_name}: Updating headers with OAuth browser fingerprint")
-                    updated_headers.update(result_data["browser_headers"])
+                    updated_headers.update(oauth_browser_headers)
 
                 merged_cookies = {**bypass_cookies, **user_cookies}
                 return await self.check_in_with_cookies(merged_cookies, updated_headers, api_user)
@@ -1341,9 +1376,9 @@ class CheckIn:
 
                     # 如果 OAuth 登录返回了 browser_headers，用它更新 common_headers
                     updated_headers = common_headers.copy()
-                    if "browser_headers" in result_data and result_data["browser_headers"]:
+                    if oauth_browser_headers:
                         print(f"ℹ️ {self.account_name}: Updating headers with OAuth browser fingerprint")
-                        updated_headers.update(result_data["browser_headers"])
+                        updated_headers.update(oauth_browser_headers)
 
                     response = client.get(callback_url, headers=updated_headers, timeout=30)
 
