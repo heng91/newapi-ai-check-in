@@ -783,24 +783,40 @@ class CheckIn:
 
                     print(f"ℹ️ {self.account_name}: Got {len(response.cookies)} cookies from auth state request")
                     for cookie in response.cookies.jar:
+                        # 从 _rest 中获取 HttpOnly 和 SameSite，确保类型正确
+                        # curl_cffi 的 _rest 可能返回非标准类型
+                        http_only_raw = cookie._rest.get("HttpOnly", False)
+                        http_only = bool(http_only_raw) if http_only_raw is not None else False
+                        
+                        same_site_raw = cookie._rest.get("SameSite", "Lax")
+                        same_site = str(same_site_raw) if same_site_raw else "Lax"
+                        
+                        # secure 也需要确保是布尔值
+                        secure = bool(cookie.secure) if cookie.secure is not None else False
+                        
                         print(
                             f"  📚 Cookie: {cookie.name} (Domain: {cookie.domain}, "
                             f"Path: {cookie.path}, Expires: {cookie.expires}, "
-                            f"HttpOnly: {cookie._rest.get('HttpOnly', False)}, Secure: {cookie.secure}, "
-                            f"SameSite: {cookie._rest.get('SameSite', 'Lax')})"
+                            f"HttpOnly: {http_only}, Secure: {secure}, "
+                            f"SameSite: {same_site})"
                         )
-                        cookies.append(
-                            {
-                                "name": cookie.name,
-                                "domain": cookie.domain if cookie.domain else parsed_domain,
-                                "value": cookie.value,
-                                "path": cookie.path,
-                                "expires": cookie.expires,
-                                "secure": cookie.secure,
-                                "httpOnly": cookie._rest.get("HttpOnly", False),
-                                "sameSite": cookie._rest.get("SameSite", "Lax"),
-                            }
-                        )
+                        # 构建 cookie 字典，Camoufox 要求字段类型严格
+                        # expires 必须是 float 类型，如果是 None（session cookie）则不包含该字段
+                        # httpOnly 必须是 boolean 类型
+                        # secure 必须是 boolean 类型
+                        cookie_dict = {
+                            "name": cookie.name,
+                            "domain": cookie.domain if cookie.domain else parsed_domain,
+                            "value": cookie.value,
+                            "path": cookie.path if cookie.path else "/",
+                            "secure": secure,
+                            "httpOnly": http_only,
+                            "sameSite": same_site,
+                        }
+                        # 只有当 expires 是有效的数值时才添加
+                        if cookie.expires is not None:
+                            cookie_dict["expires"] = float(cookie.expires)
+                        cookies.append(cookie_dict)
 
                     return {
                         "success": True,
