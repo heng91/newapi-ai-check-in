@@ -11,13 +11,14 @@ import tempfile
 from urllib.parse import urlparse
 
 import httpx
+from curl_cffi import requests as curl_requests
 from camoufox.async_api import AsyncCamoufox
 from playwright_captcha import CaptchaType, ClickSolver, FrameworkType
 from utils.config import AccountConfig, ProviderConfig
 from utils.browser_utils import parse_cookies, get_random_user_agent, take_screenshot, aliyun_captcha_check
 from utils.http_utils import proxy_resolve, response_resolve
 from utils.topup import topup
-from utils.get_headers import get_browser_headers, print_browser_headers
+from utils.get_headers import get_browser_headers, print_browser_headers, get_curl_cffi_impersonate
 
 class CheckIn:
     """newapi.ai 签到管理类"""
@@ -640,7 +641,12 @@ class CheckIn:
         client: httpx.Client,
         headers: dict,
     ) -> dict:
-        """获取认证状态"""
+        """获取认证状态
+        
+        Args:
+            client: httpx 客户端
+            headers: 请求头
+        """
         try:
             response = client.get(self.provider_config.get_auth_state_url(), headers=headers, timeout=30)
 
@@ -720,6 +726,101 @@ class CheckIn:
             return {
                 "success": False,
                 "error": f"Failed to get auth state, {e}",
+            }
+
+    async def get_auth_state_with_curl_cffi(
+        self,
+        headers: dict,
+        bypass_cookies: dict,
+        impersonate: str = "firefox135",
+    ) -> dict:
+        """使用 curl_cffi 获取认证状态（模拟浏览器 TLS 指纹）
+        
+        curl_cffi 可以模拟真实浏览器的 TLS 指纹，这对于严格的 Cloudflare 配置是必要的。
+        httpx 使用 Python 的 TLS 实现，指纹与浏览器完全不同，会被 Cloudflare 拒绝。
+        
+        Args:
+            headers: 请求头
+            bypass_cookies: bypass cookies
+            impersonate: curl_cffi impersonate 值，指定要模拟的浏览器 TLS 指纹
+                        （如 "firefox135", "chrome131" 等）
+        """
+        try:
+            # 使用 curl_cffi 发送请求，模拟浏览器的 TLS 指纹
+            # impersonate 参数指定要模拟的浏览器
+            print(f"ℹ️ {self.account_name}: Using curl_cffi with impersonate={impersonate}")
+            response = curl_requests.get(
+                self.provider_config.get_auth_state_url(),
+                headers=headers,
+                cookies=bypass_cookies,
+                impersonate=impersonate,
+                timeout=30,
+                proxy=self.http_proxy_config,
+            )
+
+            if response.status_code == 200:
+                try:
+                    json_data = response.json()
+                except Exception:
+                    # 保存响应内容到日志
+                    log_file = f"logs/get_auth_state_curl_{self.account_name}.html"
+                    os.makedirs("logs", exist_ok=True)
+                    with open(log_file, "w", encoding="utf-8") as f:
+                        f.write(response.text)
+                    print(f"⚠️ {self.account_name}: Response saved to {log_file}")
+                    return {
+                        "success": False,
+                        "error": "Failed to get auth state: Invalid response type (saved to logs)",
+                    }
+
+                # 检查响应是否成功
+                if json_data.get("success"):
+                    auth_data = json_data.get("data")
+
+                    # 将 curl_cffi Cookies 转换为 Camoufox 格式
+                    cookies = []
+                    parsed_domain = urlparse(self.provider_config.origin).netloc
+
+                    print(f"ℹ️ {self.account_name}: Got {len(response.cookies)} cookies from auth state request")
+                    for cookie in response.cookies.jar:
+                        print(
+                            f"  📚 Cookie: {cookie.name} (Domain: {cookie.domain}, "
+                            f"Path: {cookie.path}, Expires: {cookie.expires}, "
+                            f"HttpOnly: {cookie._rest.get('HttpOnly', False)}, Secure: {cookie.secure}, "
+                            f"SameSite: {cookie._rest.get('SameSite', 'Lax')})"
+                        )
+                        cookies.append(
+                            {
+                                "name": cookie.name,
+                                "domain": cookie.domain if cookie.domain else parsed_domain,
+                                "value": cookie.value,
+                                "path": cookie.path,
+                                "expires": cookie.expires,
+                                "secure": cookie.secure,
+                                "httpOnly": cookie._rest.get("HttpOnly", False),
+                                "sameSite": cookie._rest.get("SameSite", "Lax"),
+                            }
+                        )
+
+                    return {
+                        "success": True,
+                        "state": auth_data,
+                        "cookies": cookies,
+                    }
+                else:
+                    error_msg = json_data.get("message", "Unknown error")
+                    return {
+                        "success": False,
+                        "error": f"Failed to get auth state: {error_msg}",
+                    }
+            return {
+                "success": False,
+                "error": f"Failed to get auth state: HTTP {response.status_code}",
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"Failed to get auth state with curl_cffi, {e}",
             }
 
     async def get_user_info_with_browser(self, auth_cookies: list[dict]) -> dict:
@@ -1170,11 +1271,24 @@ class CheckIn:
                     print(f"❌ {self.account_name}: {error_msg}")
                     return False, {"error": "Failed to get GitHub client ID"}
 
-            # # 获取 OAuth 认证状态
-            auth_state_result = await self.get_auth_state(
-                client=client,
-                headers=headers,
-            )
+            # 获取 OAuth 认证状态
+            # 如果使用 cf_clearance bypass，需要使用 curl_cffi 模拟 Firefox TLS 指纹
+            if self.provider_config.needs_cf_clearance():
+                # 使用 curl_cffi 模拟浏览器 TLS 指纹
+                # 根据 User-Agent 自动推断 impersonate 值
+                user_agent = headers.get("User-Agent", "")
+                impersonate = get_curl_cffi_impersonate(user_agent)
+                auth_state_result = await self.get_auth_state_with_curl_cffi(
+                    headers=headers,
+                    bypass_cookies=bypass_cookies,
+                    impersonate=impersonate,
+                )
+            else:
+                # 使用 httpx 发送请求
+                auth_state_result = await self.get_auth_state(
+                    client=client,
+                    headers=headers,
+                )
             if auth_state_result and auth_state_result.get("success"):
                 print(f"ℹ️ {self.account_name}: Got auth state for GitHub: {auth_state_result['state']}")
             else:
@@ -1325,10 +1439,23 @@ class CheckIn:
                     return False, {"error": "Failed to get Linux.do client ID"}
 
             # 获取 OAuth 认证状态
-            auth_state_result = await self.get_auth_state(
-                client=client,
-                headers=headers,
-            )
+            # 如果使用 cf_clearance bypass，需要使用 curl_cffi 模拟 Firefox TLS 指纹
+            if self.provider_config.needs_cf_clearance():
+                # 使用 curl_cffi 模拟浏览器 TLS 指纹
+                # 根据 User-Agent 自动推断 impersonate 值
+                user_agent = headers.get("User-Agent", "")
+                impersonate = get_curl_cffi_impersonate(user_agent)
+                auth_state_result = await self.get_auth_state_with_curl_cffi(
+                    headers=headers,
+                    bypass_cookies=bypass_cookies,
+                    impersonate=impersonate,
+                )
+            else:
+                # 使用 httpx 发送请求
+                auth_state_result = await self.get_auth_state(
+                    client=client,
+                    headers=headers,
+                )
             if auth_state_result and auth_state_result.get("success"):
                 print(f"ℹ️ {self.account_name}: Got auth state for Linux.do: {auth_state_result['state']}")
             else:

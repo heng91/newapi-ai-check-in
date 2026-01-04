@@ -4,6 +4,114 @@
 用于 Cloudflare cf_clearance cookie 验证时保持指纹一致性
 """
 
+import re
+
+
+def get_curl_cffi_impersonate(user_agent: str) -> str:
+    """根据 User-Agent 获取 curl_cffi 的 impersonate 值
+    
+    curl_cffi 支持的浏览器类型（截至 2024）：
+    - Firefox: firefox133, firefox135, firefox144
+    - Chrome: chrome99-chrome142
+    - Safari: safari153-safari2601
+    - Edge: edge99, edge101
+    
+    Args:
+        user_agent: 浏览器 User-Agent 字符串
+        
+    Returns:
+        curl_cffi impersonate 值，如 "firefox135", "chrome131" 等
+    """
+    # 检测 Firefox
+    firefox_match = re.search(r'Firefox/(\d+)', user_agent)
+    if firefox_match:
+        version = int(firefox_match.group(1))
+        # 选择最接近的支持版本
+        if version >= 144:
+            return "firefox144"
+        elif version >= 135:
+            return "firefox135"
+        else:
+            return "firefox133"
+    
+    # 检测 Chrome
+    chrome_match = re.search(r'Chrome/(\d+)', user_agent)
+    if chrome_match:
+        version = int(chrome_match.group(1))
+        # 选择最接近的支持版本
+        if version >= 142:
+            return "chrome142"
+        elif version >= 136:
+            return "chrome136"
+        elif version >= 133:
+            return "chrome133a"
+        elif version >= 131:
+            return "chrome131"
+        elif version >= 124:
+            return "chrome124"
+        elif version >= 123:
+            return "chrome123"
+        elif version >= 120:
+            return "chrome120"
+        elif version >= 119:
+            return "chrome119"
+        elif version >= 116:
+            return "chrome116"
+        elif version >= 110:
+            return "chrome110"
+        elif version >= 107:
+            return "chrome107"
+        elif version >= 104:
+            return "chrome104"
+        elif version >= 101:
+            return "chrome101"
+        elif version >= 100:
+            return "chrome100"
+        else:
+            return "chrome99"
+    
+    # 检测 Safari
+    safari_match = re.search(r'Version/(\d+)\.(\d+)', user_agent)
+    if safari_match and 'Safari' in user_agent and 'Chrome' not in user_agent:
+        major = int(safari_match.group(1))
+        minor = int(safari_match.group(2))
+        version = major * 10 + minor
+        
+        # iOS Safari
+        if 'iPhone' in user_agent or 'iPad' in user_agent:
+            if version >= 184:
+                return "safari184_ios"
+            elif version >= 180:
+                return "safari180_ios"
+            else:
+                return "safari172_ios"
+        
+        # macOS Safari
+        if version >= 260:
+            return "safari2601"
+        elif version >= 184:
+            return "safari184"
+        elif version >= 180:
+            return "safari180"
+        elif version >= 170:
+            return "safari170"
+        elif version >= 155:
+            return "safari155"
+        else:
+            return "safari153"
+    
+    # 检测 Edge
+    edge_match = re.search(r'Edg/(\d+)', user_agent)
+    if edge_match:
+        version = int(edge_match.group(1))
+        if version >= 101:
+            return "edge101"
+        else:
+            return "edge99"
+    
+    # 默认使用 Firefox 135（与 Camoufox 默认配置匹配）
+    return "firefox135"
+
 
 async def get_browser_headers(page) -> dict:
     """从浏览器页面获取指纹头部信息
