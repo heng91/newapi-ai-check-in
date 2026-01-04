@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Generator
 
-import httpx
+from curl_cffi import requests as curl_requests
 
 from utils.http_utils import proxy_resolve, response_resolve
 
@@ -18,13 +18,17 @@ if TYPE_CHECKING:
     from utils.config import AccountConfig
 
 
-def get_runawaytime_cdk(account_config: "AccountConfig") -> Generator[str, None, None]:
+def get_runawaytime_cdk(
+    account_config: "AccountConfig",
+    impersonate: str = "firefox135",
+) -> Generator[str, None, None]:
     """获取 runawaytime CDK（签到 + 大转盘）
     
     通过 fuli.hxi.me 签到和大转盘获取 CDK
     
     Args:
         account_config: 账号配置对象，需要包含 fuli_cookies 在 extra 中
+        impersonate: curl_cffi 浏览器指纹模拟，默认为 "firefox135"
     
     Yields:
         str: CDK 字符串
@@ -41,7 +45,7 @@ def get_runawaytime_cdk(account_config: "AccountConfig") -> Generator[str, None,
     http_proxy = proxy_resolve(proxy_config)
     
     try:
-        client = httpx.Client(http2=False, timeout=30.0, proxy=http_proxy)
+        session = curl_requests.Session(impersonate=impersonate, proxy=http_proxy, timeout=30)
         try:
             # 构建基础请求头
             headers = {
@@ -57,8 +61,8 @@ def get_runawaytime_cdk(account_config: "AccountConfig") -> Generator[str, None,
             }
             
             # 设置 cookies
-            client.cookies.update(fuli_cookies)
-            client.cookies.set("i18next", "en")
+            session.cookies.update(fuli_cookies)
+            session.cookies.set("i18next", "en")
             
             # ===== 第一部分：签到 =====
             # 先检查签到状态
@@ -70,10 +74,10 @@ def get_runawaytime_cdk(account_config: "AccountConfig") -> Generator[str, None,
                 "sec-fetch-site": "same-origin",
             })
             
-            status_response = client.get(
+            status_response = session.get(
                 "https://fuli.hxi.me/api/checkin/status",
                 headers=status_headers,
-                timeout=30
+                timeout=30,
             )
             
             already_checked_in = False
@@ -95,10 +99,10 @@ def get_runawaytime_cdk(account_config: "AccountConfig") -> Generator[str, None,
                     "sec-fetch-site": "same-origin",
                 })
                 
-                response = client.post(
+                response = session.post(
                     "https://fuli.hxi.me/api/checkin",
                     headers=checkin_headers,
-                    timeout=30
+                    timeout=30,
                 )
                 
                 if response.status_code in [200, 400]:
@@ -126,10 +130,10 @@ def get_runawaytime_cdk(account_config: "AccountConfig") -> Generator[str, None,
                 "sec-fetch-site": "same-origin",
             })
             
-            wheel_status_response = client.get(
+            wheel_status_response = session.get(
                 "https://fuli.hxi.me/api/wheel/status",
                 headers=wheel_status_headers,
-                timeout=30
+                timeout=30,
             )
             
             remaining = 0
@@ -157,10 +161,10 @@ def get_runawaytime_cdk(account_config: "AccountConfig") -> Generator[str, None,
                 spin_count = 0
                 
                 while remaining > 0:
-                    response = client.post(
+                    response = session.post(
                         "https://fuli.hxi.me/api/wheel",
                         headers=wheel_headers,
-                        timeout=30
+                        timeout=30,
                     )
                     
                     if response.status_code in [200, 400]:
@@ -191,18 +195,22 @@ def get_runawaytime_cdk(account_config: "AccountConfig") -> Generator[str, None,
                 if spin_count > 0:
                     print(f"✅ {account_name}: Total {spin_count} CDK(s) obtained from wheel")
         finally:
-            client.close()
+            session.close()
     except Exception as e:
         print(f"❌ {account_name}: Error getting runawaytime CDK - {e}")
 
 
-def get_x666_cdk(account_config: "AccountConfig") -> Generator[str, None, None]:
+def get_x666_cdk(
+    account_config: "AccountConfig",
+    impersonate: str = "firefox135",
+) -> Generator[str, None, None]:
     """获取 x666 抽奖 CDK
     
     通过 qd.x666.me 抽奖获取 CDK
     
     Args:
         account_config: 账号配置对象，需要包含 access_token 在 extra 中
+        impersonate: curl_cffi 浏览器指纹模拟，默认为 "firefox135"
     
     Yields:
         str: CDK 字符串
@@ -218,7 +226,7 @@ def get_x666_cdk(account_config: "AccountConfig") -> Generator[str, None, None]:
     http_proxy = proxy_resolve(proxy)
     
     try:
-        client = httpx.Client(http2=False, timeout=30.0, proxy=http_proxy)
+        session = curl_requests.Session(impersonate=impersonate, proxy=http_proxy, timeout=30)
         try:
             # 构建基础请求头
             headers = {
@@ -233,7 +241,7 @@ def get_x666_cdk(account_config: "AccountConfig") -> Generator[str, None, None]:
                 "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36",
             }
             
-            client.cookies.set("i18next", "en")
+            session.cookies.set("i18next", "en")
             
             # 先获取用户信息，检查是否可以抽奖
             info_headers = headers.copy()
@@ -248,10 +256,10 @@ def get_x666_cdk(account_config: "AccountConfig") -> Generator[str, None, None]:
                 "sec-fetch-site": "same-origin",
             })
             
-            info_response = client.post(
+            info_response = session.post(
                 "https://qd.x666.me/api/user/info",
                 headers=info_headers,
-                timeout=30
+                timeout=30,
             )
             
             if info_response.status_code == 200:
@@ -285,10 +293,10 @@ def get_x666_cdk(account_config: "AccountConfig") -> Generator[str, None, None]:
                 "sec-fetch-site": "same-origin",
             })
             
-            response = client.post(
+            response = session.post(
                 "https://qd.x666.me/api/lottery/spin",
                 headers=spin_headers,
-                timeout=30
+                timeout=30,
             )
             
             if response.status_code in [200, 400]:
@@ -312,6 +320,6 @@ def get_x666_cdk(account_config: "AccountConfig") -> Generator[str, None, None]:
                 
                 print(f"❌ {account_name}: Spin failed - {message}")
         finally:
-            client.close()
+            session.close()
     except Exception as e:
         print(f"❌ {account_name}: Error getting x666 CDK - {e}")

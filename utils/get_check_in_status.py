@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-import httpx
+from curl_cffi import requests as curl_requests
 
 from utils.http_utils import proxy_resolve, response_resolve
 
@@ -24,6 +24,7 @@ def get_newapi_check_in_status(
     cookies: dict,
     headers: dict,
     path: str = "/api/user/checkin",
+    impersonate: str = "firefox135",
 ) -> bool:
     """
     查询标准 newapi 签到状态，自动拼接当前月份
@@ -34,6 +35,7 @@ def get_newapi_check_in_status(
         cookies: cookies 字典
         headers: 请求头字典
         path: 签到状态接口路径，默认为 "/api/user/checkin"
+        impersonate: curl_cffi 浏览器指纹模拟，默认为 "firefox135"
 
     Returns:
         bool: 今日是否已签到
@@ -49,10 +51,14 @@ def get_newapi_check_in_status(
     print(f"🔍 {account_name}: Getting check-in status")
 
     try:
-        client = httpx.Client(http2=True, timeout=30.0, proxy=http_proxy)
+        session = curl_requests.Session(impersonate=impersonate, proxy=http_proxy, timeout=30)
         try:
-            client.cookies.update(cookies)
-            response = client.get(check_in_status_url, headers=headers, timeout=30)
+            session.cookies.update(cookies)
+            response = session.get(
+                check_in_status_url,
+                headers=headers,
+                timeout=30,
+            )
 
             if response.status_code == 200:
                 json_data = response_resolve(response, "get_check_in_status", account_name)
@@ -86,13 +92,16 @@ def get_newapi_check_in_status(
                 print(f"❌ {account_name}: Failed to get check-in status: HTTP {response.status_code}")
                 return False
         finally:
-            client.close()
+            session.close()
     except Exception as e:
         print(f"❌ {account_name}: Error getting check-in status: {e}")
         return False
 
 
-def create_newapi_check_in_status(path: str = "/api/user/checkin"):
+def create_newapi_check_in_status(
+    path: str = "/api/user/checkin",
+    impersonate: str = "firefox135",
+):
     """
     创建一个标准 newapi 签到状态查询函数
 
@@ -100,6 +109,7 @@ def create_newapi_check_in_status(path: str = "/api/user/checkin"):
 
     Args:
         path: 签到状态接口路径，默认为 "/api/user/checkin"
+        impersonate: curl_cffi 浏览器指纹模拟，默认为 "firefox135"
 
     Returns:
         Callable: 签到状态查询函数，签名为 (provider_config, account_config, cookies, headers) -> bool
@@ -117,6 +127,7 @@ def create_newapi_check_in_status(path: str = "/api/user/checkin"):
             cookies=cookies,
             headers=headers,
             path=path,
+            impersonate=impersonate,
         )
 
     return _check_status
