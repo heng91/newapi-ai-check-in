@@ -258,13 +258,7 @@ class AppConfig:
         providers = cls._load_providers(providers_env)
 
         # 加载账号配置
-        # 优先从 TEST_ACCOUNTS 加载，如果没有则从 ACCOUNTS 加载
-        test_accounts_str = os.getenv("TEST_ACCOUNTS")
-        if test_accounts_str:
-            print("ℹ️ Using test accounts from TEST_ACCOUNTS environment variable")
-            accounts = cls._load_accounts("TEST_ACCOUNTS")
-        else:
-            accounts = cls._load_accounts(accounts_env)
+        accounts = cls._load_accounts(accounts_env)
 
         # 加载全局代理配置
         global_proxy = cls._load_proxy(proxy_env)
