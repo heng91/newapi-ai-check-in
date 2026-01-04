@@ -178,13 +178,14 @@ class CheckIn:
                                 # 自动求解失败，回退到手动等待
                                 await self._wait_for_cf_clearance_manually(browser, page)
                         else:
-                            print(f"ℹ️ {self.account_name}: No Cloudflare challenge detected")
+                            print(f"⚠️ {self.account_name}: No Cloudflare challenge detected")
+                            # 不需要手动操作，但需要等待后台完成 Cloudflare 验证
+                            await self._wait_for_cf_clearance_manually(browser, page)
 
                     # 最终获取所有 cookies
                     cookies = await browser.cookies()
 
                     cf_cookies = {}
-                    print(f"ℹ️ {self.account_name}: Cloudflare cookies")
                     for cookie in cookies:
                         cookie_name = cookie.get("name")
                         cookie_value = cookie.get("value")
@@ -195,15 +196,16 @@ class CheckIn:
 
                     print(f"ℹ️ {self.account_name}: Got {len(cf_cookies)} Cloudflare cookies")
 
-                    # 检查是否获取到 cf_clearance cookie
-                    if "cf_clearance" not in cf_cookies:
-                        print(f"❌ {self.account_name}: cf_clearance cookie not obtained")
-                        await take_screenshot(page, "cf_clearance_failed", self.account_name)
-                        return None, None
 
                     # 使用工具函数获取浏览器指纹信息（User-Agent 和 Client Hints）
                     browser_headers = await get_browser_headers(page)
                     print_browser_headers(self.account_name, browser_headers)
+
+                    # 检查是否获取到 cf_clearance cookie
+                    if "cf_clearance" not in cf_cookies:
+                        print(f"⚠️ {self.account_name}: cf_clearance cookie not obtained")
+                        await take_screenshot(page, "cf_clearance_failed", self.account_name)
+                        return None, browser_headers
 
                     # 显示获取到的 cookies
                     cookie_names = list(cf_cookies.keys())
