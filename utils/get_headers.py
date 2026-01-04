@@ -11,11 +11,15 @@ async def get_browser_headers(page) -> dict:
     获取 User-Agent 和 Client Hints (sec-ch-ua 系列头部)，
     用于后续 HTTP 请求时保持与浏览器指纹一致。
     
+    注意：Firefox 浏览器不支持 Client Hints (sec-ch-ua 系列头部)，
+    只有 Chromium 系浏览器才会发送这些头部。如果检测到 Firefox，
+    则只返回 User-Agent，不返回 sec-ch-ua 头部。
+    
     Args:
         page: Playwright/Camoufox 页面对象
         
     Returns:
-        包含 User-Agent 和 Client Hints 的字典
+        包含 User-Agent 和可能的 Client Hints 的字典
     """
     browser_headers = await page.evaluate(
         """() => {
@@ -25,9 +29,27 @@ async def get_browser_headers(page) -> dict:
             // 基础 User-Agent
             hints['User-Agent'] = ua;
             
-            // 解析 User-Agent 获取浏览器信息
+            // 检测是否为 Firefox 浏览器
+            // Firefox 不支持 Client Hints (sec-ch-ua 系列头部)
+            // 只有 Chromium 系浏览器才发送这些头部
+            const isFirefox = ua.includes('Firefox');
+            
+            if (isFirefox) {
+                // Firefox 浏览器不发送 sec-ch-ua 头部
+                // 标记为 Firefox 以便调用方知道
+                hints['_isFirefox'] = true;
+                return hints;
+            }
+            
+            // 解析 User-Agent 获取 Chrome 版本信息
             const chromeMatch = ua.match(/Chrome\\/([\\d.]+)/);
-            const chromeVersion = chromeMatch ? chromeMatch[1] : '120.0.0.0';
+            if (!chromeMatch) {
+                // 如果不是 Chrome/Chromium 浏览器，也不发送 sec-ch-ua
+                hints['_isChromium'] = false;
+                return hints;
+            }
+            
+            const chromeVersion = chromeMatch[1];
             const chromeMajor = chromeVersion.split('.')[0];
             
             // 检测平台
@@ -50,7 +72,7 @@ async def get_browser_headers(page) -> dict:
                 platformVersion = '6.5.0';
             }
             
-            // 构建 sec-ch-ua 头部
+            // 构建 sec-ch-ua 头部（仅 Chromium 系浏览器）
             hints['sec-ch-ua'] = `"Google Chrome";v="${chromeMajor}", "Chromium";v="${chromeMajor}", "Not A(Brand";v="24"`;
             hints['sec-ch-ua-mobile'] = isMobile ? '?1' : '?0';
             hints['sec-ch-ua-platform'] = `"${platformName}"`;
@@ -60,10 +82,15 @@ async def get_browser_headers(page) -> dict:
             hints['sec-ch-ua-full-version'] = `"${chromeVersion}"`;
             hints['sec-ch-ua-full-version-list'] = `"Google Chrome";v="${chromeVersion}", "Chromium";v="${chromeVersion}", "Not A(Brand";v="24.0.0.0"`;
             hints['sec-ch-ua-model'] = '""';
+            hints['_isChromium'] = true;
             
             return hints;
         }"""
     )
+    
+    # 移除内部标记字段，不需要发送给服务器
+    browser_headers.pop('_isFirefox', None)
+    browser_headers.pop('_isChromium', None)
     
     return browser_headers
 

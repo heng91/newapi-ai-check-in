@@ -1466,21 +1466,29 @@ class CheckIn:
                 "Cache-Control": "no-store",
                 "Pragma": "no-cache",
                 "User-Agent": browser_headers.get("User-Agent", get_random_user_agent()),
-                # 添加 Client Hints 头部
-                "sec-ch-ua": browser_headers.get("sec-ch-ua", ""),
-                "sec-ch-ua-mobile": browser_headers.get("sec-ch-ua-mobile", "?0"),
-                "sec-ch-ua-platform": browser_headers.get("sec-ch-ua-platform", ""),
-                "sec-ch-ua-platform-version": browser_headers.get("sec-ch-ua-platform-version", ""),
-                "sec-ch-ua-arch": browser_headers.get("sec-ch-ua-arch", ""),
-                "sec-ch-ua-bitness": browser_headers.get("sec-ch-ua-bitness", ""),
-                "sec-ch-ua-full-version": browser_headers.get("sec-ch-ua-full-version", ""),
-                "sec-ch-ua-full-version-list": browser_headers.get("sec-ch-ua-full-version-list", ""),
-                "sec-ch-ua-model": browser_headers.get("sec-ch-ua-model", '""'),
                 "sec-fetch-dest": "empty",
                 "sec-fetch-mode": "cors",
                 "sec-fetch-site": "same-origin",
             }
-            print(f"ℹ️ {self.account_name}: Using browser fingerprint headers")
+            
+            # 只有当 browser_headers 中包含 sec-ch-ua 时才添加 Client Hints 头部
+            # Firefox 浏览器不支持 Client Hints，所以 browser_headers 中不会有这些头部
+            # 如果强行添加会导致 Cloudflare 检测到指纹不一致而返回 403
+            if "sec-ch-ua" in browser_headers:
+                common_headers.update({
+                    "sec-ch-ua": browser_headers.get("sec-ch-ua", ""),
+                    "sec-ch-ua-mobile": browser_headers.get("sec-ch-ua-mobile", "?0"),
+                    "sec-ch-ua-platform": browser_headers.get("sec-ch-ua-platform", ""),
+                    "sec-ch-ua-platform-version": browser_headers.get("sec-ch-ua-platform-version", ""),
+                    "sec-ch-ua-arch": browser_headers.get("sec-ch-ua-arch", ""),
+                    "sec-ch-ua-bitness": browser_headers.get("sec-ch-ua-bitness", ""),
+                    "sec-ch-ua-full-version": browser_headers.get("sec-ch-ua-full-version", ""),
+                    "sec-ch-ua-full-version-list": browser_headers.get("sec-ch-ua-full-version-list", ""),
+                    "sec-ch-ua-model": browser_headers.get("sec-ch-ua-model", '""'),
+                })
+                print(f"ℹ️ {self.account_name}: Using browser fingerprint headers (with Client Hints)")
+            else:
+                print(f"ℹ️ {self.account_name}: Using browser fingerprint headers (Firefox, no Client Hints)")
         else:
             # 没有浏览器指纹，生成一次随机 User-Agent 并在整个流程中使用
             random_ua = get_random_user_agent()
