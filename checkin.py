@@ -5,6 +5,7 @@ CheckIn 类
 
 import asyncio
 import json
+import inspect
 import hashlib
 import os
 import tempfile
@@ -12,12 +13,12 @@ from urllib.parse import urlparse, urlencode
 
 from curl_cffi import requests as curl_requests
 from camoufox.async_api import AsyncCamoufox
-from playwright_captcha import CaptchaType, ClickSolver, FrameworkType
 from utils.config import AccountConfig, ProviderConfig
 from utils.browser_utils import parse_cookies, get_random_user_agent, take_screenshot, aliyun_captcha_check
+from utils.get_cf_clearance import get_cf_clearance
 from utils.http_utils import proxy_resolve, response_resolve
 from utils.topup import topup
-from utils.get_headers import get_browser_headers, print_browser_headers, get_curl_cffi_impersonate
+from utils.get_headers import get_curl_cffi_impersonate
 
 class CheckIn:
     """newapi.ai 签到管理类"""
@@ -118,146 +119,6 @@ class CheckIn:
                     return None
                 finally:
                     await page.close()
-
-    async def get_cf_clearance_with_browser(self) -> tuple[dict | None, dict | None]:
-        """使用 Camoufox 获取 Cloudflare cf_clearance cookie（隐私模式）
-        
-        使用 playwright-captcha 库自动点击 Cloudflare 验证按钮。
-        
-        Returns:
-            tuple: (cf_cookies, browser_headers)
-                - cf_cookies: Cloudflare cookies 字典，如果失败则为 None
-                - browser_headers: 浏览器指纹头部信息字典，包含 User-Agent 和 Client Hints
-        """
-        print(
-            f"ℹ️ {self.account_name}: Starting browser to get cf_clearance cookie (using proxy: {'true' if self.camoufox_proxy_config else 'false'})"
-        )
-
-        with tempfile.TemporaryDirectory(prefix=f"camoufox_{self.safe_account_name}_cf_") as tmp_dir:
-            print(f"ℹ️ {self.account_name}: Using temporary directory: {tmp_dir}")
-            
-            async with AsyncCamoufox(
-                persistent_context=True,
-                user_data_dir=tmp_dir,
-                headless=False,
-                humanize=True,
-                locale="en-US",
-                geoip=True if self.camoufox_proxy_config else False,
-                proxy=self.camoufox_proxy_config,
-                os="macos",  # 强制使用 macOS 指纹，避免跨平台指纹不一致问题
-                config={
-                    "forceScopeAccess": True,
-                }
-            ) as browser:
-                page = await browser.new_page()
-
-                try:
-                    print(f"ℹ️ {self.account_name}: Access login page to trigger Cloudflare challenge")
-                    
-                    async with ClickSolver(
-                        framework=FrameworkType.CAMOUFOX,
-                        page=page,
-                        max_attempts=5,
-                        attempt_delay=3
-                    ) as solver:
-                        await page.goto(self.provider_config.get_login_url(), wait_until="networkidle")
-                        
-                        # 检查是否在 Cloudflare 验证页面
-                        page_title = await page.title()
-                        page_content = await page.content()
-                        
-                        if "Just a moment" in page_title or "Checking your browser" in page_content:
-                            print(f"ℹ️ {self.account_name}: Cloudflare challenge detected, auto-solving...")
-                            try:
-                                # 使用 ClickSolver 自动点击验证
-                                await solver.solve_captcha(
-                                    captcha_container=page,
-                                    captcha_type=CaptchaType.CLOUDFLARE_INTERSTITIAL
-                                )
-                                print(f"✅ {self.account_name}: Cloudflare challenge auto-solved")
-                            except Exception as solve_err:
-                                print(f"⚠️ {self.account_name}: Auto-solve failed: {solve_err}, waiting for manual verification...")
-                                # 自动求解失败，回退到手动等待
-                                await self._wait_for_cf_clearance_manually(browser, page)
-                        else:
-                            print(f"⚠️ {self.account_name}: No Cloudflare challenge detected")
-                            # 不需要手动操作，但需要等待后台完成 Cloudflare 验证
-                            await self._wait_for_cf_clearance_manually(browser, page)
-
-                    # 最终获取所有 cookies
-                    cookies = await browser.cookies()
-
-                    cf_cookies = {}
-                    for cookie in cookies:
-                        cookie_name = cookie.get("name")
-                        cookie_value = cookie.get("value")
-                        print(f"  📚 Cookie: {cookie_name} (value: {cookie_value[:50] if cookie_value and len(cookie_value) > 50 else cookie_value}...)")
-                        # 获取 Cloudflare 相关的 cookies
-                        if cookie_name in ["cf_clearance", "__cf_bm", "cf_chl_2", "cf_chl_prog"] and cookie_value is not None:
-                            cf_cookies[cookie_name] = cookie_value
-
-                    print(f"ℹ️ {self.account_name}: Got {len(cf_cookies)} Cloudflare cookies")
-
-
-                    # 使用工具函数获取浏览器指纹信息（User-Agent 和 Client Hints）
-                    browser_headers = await get_browser_headers(page)
-                    print_browser_headers(self.account_name, browser_headers)
-
-                    # 检查是否获取到 cf_clearance cookie
-                    if "cf_clearance" not in cf_cookies:
-                        print(f"⚠️ {self.account_name}: cf_clearance cookie not obtained")
-                        await take_screenshot(page, "cf_clearance_failed", self.account_name)
-                        return None, browser_headers
-
-                    # 显示获取到的 cookies
-                    cookie_names = list(cf_cookies.keys())
-                    print(f"✅ {self.account_name}: Successfully got Cloudflare cookies: {cookie_names}")
-
-                    return cf_cookies, browser_headers
-
-                except Exception as e:
-                    print(f"❌ {self.account_name}: Error occurred while getting cf_clearance cookie: {e}")
-                    await take_screenshot(page, "cf_clearance_error", self.account_name)
-                    return None, None
-                finally:
-                    await page.close()
-
-    async def _wait_for_cf_clearance_manually(self, browser, page) -> None:
-        """等待 Cloudflare 验证完成（手动）
-        
-        Args:
-            browser: Camoufox 浏览器实例
-            page: 页面实例
-        """
-        max_wait_time = 60000  # 60 秒
-        check_interval = 2000  # 每 2 秒检查一次
-        elapsed_time = 0
-
-        while elapsed_time < max_wait_time:
-            # 检查是否已经获取到 cf_clearance cookie
-            cookies = await browser.cookies()
-            cf_clearance = None
-            for cookie in cookies:
-                if cookie.get("name") == "cf_clearance":
-                    cf_clearance = cookie.get("value")
-                    break
-
-            if cf_clearance:
-                print(f"✅ {self.account_name}: cf_clearance cookie obtained")
-                break
-
-            # 检查页面是否还在 Cloudflare 验证页面
-            page_title = await page.title()
-            page_content = await page.content()
-            
-            if "Just a moment" in page_title or "Checking your browser" in page_content:
-                print(f"ℹ️ {self.account_name}: Cloudflare challenge in progress, waiting...")
-            else:
-                # 页面已经加载完成，但可能还没有 cf_clearance
-                print(f"ℹ️ {self.account_name}: Page loaded, checking for cf_clearance...")
-
-            await page.wait_for_timeout(check_interval)
-            elapsed_time += check_interval
 
     async def get_aliyun_captcha_cookies_with_browser(self) -> dict | None:
         """使用 Camoufox 获取阿里云验证 cookies"""
@@ -945,6 +806,8 @@ class CheckIn:
 
         直接调用 get_cdk 生成器函数，每次 yield 一个 CDK 字符串并执行 topup
         每次 topup 之间保持间隔时间，如果 topup 失败则停止
+        
+        支持同步生成器和异步生成器两种类型的 get_cdk 函数
 
         Args:
             headers: 请求头
@@ -980,12 +843,16 @@ class CheckIn:
             "error": "",
         }
 
-        # 直接调用 get_cdk 生成器函数，每次 yield 一个 CDK 字符串
+        # 调用 get_cdk 函数，可能返回同步生成器或异步生成器
         cdk_generator = self.provider_config.get_cdk(self.account_config)
         topup_count = 0
         error_msg = ""
 
-        for cdk in cdk_generator:
+        # 内部函数：处理单个 CDK 的 topup
+        async def process_cdk(cdk: str) -> bool:
+            """处理单个 CDK，返回是否应该继续"""
+            nonlocal topup_count, error_msg
+            
             # 如果不是第一个 CDK，等待间隔时间
             if topup_count > 0 and topup_interval > 0:
                 print(f"⏳ {self.account_name}: Waiting {topup_interval} seconds before next topup...")
@@ -1008,13 +875,28 @@ class CheckIn:
                 results["topup_success_count"] += 1
                 if not topup_result.get("already_used"):
                     print(f"✅ {self.account_name}: Topup #{topup_count} successful")
+                return True  # 继续处理下一个
             else:
                 # topup 失败，记录错误并停止
                 error_msg = topup_result.get("error", "Topup failed")
                 results["success"] = False
                 results["error"] = error_msg
                 print(f"❌ {self.account_name}: Topup #{topup_count} failed, stopping topup process")
-                break
+                return False  # 停止处理
+
+        # 检查是否是异步生成器
+        if inspect.isasyncgen(cdk_generator):
+            # 异步生成器，使用 async for
+            async for cdk in cdk_generator:
+                should_continue = await process_cdk(cdk)
+                if not should_continue:
+                    break
+        else:
+            # 同步生成器，使用普通 for
+            for cdk in cdk_generator:
+                should_continue = await process_cdk(cdk)
+                if not should_continue:
+                    break
 
         if topup_count == 0:
             print(f"ℹ️ {self.account_name}: No CDK available for topup")
@@ -1462,19 +1344,27 @@ class CheckIn:
                 print(f"⚠️ {self.account_name}: Unable to get WAF cookies, continuing with empty cookies")
 
         elif self.provider_config.needs_cf_clearance():
-            # get_cf_clearance_with_browser 现在返回 (cookies, browser_headers) 元组
-            cf_result = await self.get_cf_clearance_with_browser()
-            
-            if cf_result[0]:
-                bypass_cookies = cf_result[0]
-                print(f"✅ {self.account_name}: Cloudflare cookies obtained")
-            else:
-                print(f"⚠️ {self.account_name}: Unable to get Cloudflare cookies, continuing with empty cookies")
+            # 直接调用公共模块的 get_cf_clearance 函数
+            try:
+                cf_result = await get_cf_clearance(
+                    url=self.provider_config.get_login_url(),
+                    account_name=self.account_name,
+                    proxy_config=self.camoufox_proxy_config,
+                )
+                
+                if cf_result[0]:
+                    bypass_cookies = cf_result[0]
+                    print(f"✅ {self.account_name}: Cloudflare cookies obtained")
+                else:
+                    print(f"⚠️ {self.account_name}: Unable to get Cloudflare cookies, continuing with empty cookies")
 
-            # 因为 Cloudflare 验证需要一致的浏览器指纹
-            if cf_result[1]:
-                browser_headers = cf_result[1]
-                print(f"✅ {self.account_name}: Cloudflare fingerprint headers obtained")
+                # 因为 Cloudflare 验证需要一致的浏览器指纹
+                if cf_result[1]:
+                    browser_headers = cf_result[1]
+                    print(f"✅ {self.account_name}: Cloudflare fingerprint headers obtained")
+            except Exception as e:
+                print(f"❌ {self.account_name}: Error occurred while getting cf_clearance cookie: {e}")
+                print(f"⚠️ {self.account_name}: Continuing with empty cookies")
         else:
             print(f"ℹ️ {self.account_name}: Bypass not required, using user cookies directly")
 
