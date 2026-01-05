@@ -409,7 +409,7 @@ class AppConfig:
                 linuxdo_client_id="AHjK9O3FfbCXKpF6VXGBC60K21yJ2fYk",
                 linuxdo_auth_path="/api/oauth/linuxdo",
                 aliyun_captcha=False,
-                bypass_method=None,
+                bypass_method="cf_clearance",
             ),
             "x666": ProviderConfig(
                 name="x666",
