@@ -69,6 +69,9 @@ class GitHubSignIn:
             humanize=True,
             locale="en-US",
             os="macos",  # 强制使用 macOS 指纹，避免跨平台指纹不一致问题
+            config={
+                "forceScopeAccess": True,
+            }
         ) as browser:
             # 只有在缓存文件存在时才加载 storage_state
             storage_state = cache_file_path if os.path.exists(cache_file_path) else None
@@ -267,6 +270,7 @@ class GitHubSignIn:
                         redirect_pattern = self.provider_config.get_github_auth_redirect_pattern()
                         print(f"ℹ️ {self.account_name}: Waiting for OAuth callback to: {redirect_pattern}")
                         await page.wait_for_url(redirect_pattern, timeout=30000)
+                        await page.wait_for_timeout(5000)
 
                         # 检查是否在 Cloudflare 验证页面
                         page_title = await page.title()
@@ -284,7 +288,7 @@ class GitHubSignIn:
                                     captcha_type=CaptchaType.CLOUDFLARE_INTERSTITIAL
                                 )
                                 print(f"✅ {self.account_name}: Cloudflare challenge auto-solved")
-                                await page.wait_for_timeout(5000)
+                                await page.wait_for_timeout(10000)
                             except Exception as solve_err:
                                 print(f"⚠️ {self.account_name}: Auto-solve failed: {solve_err}")
 
