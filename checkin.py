@@ -1107,7 +1107,7 @@ class CheckIn:
 
                 # 构建带参数的回调 URL
                 base_url = self.provider_config.get_github_auth_url()
-                callback_url = f"{base_url}?{urlencode(result_data)}"
+                callback_url = f"{base_url}?{urlencode(result_data, doseq=True)}"
                 print(f"ℹ️ {self.account_name}: Callback URL: {callback_url}")
                 try:
                     # 将 Camoufox 格式的 cookies 转换为 curl_cffi 格式
@@ -1270,7 +1270,7 @@ class CheckIn:
 
                 # 构建带参数的回调 URL
                 base_url = self.provider_config.get_linuxdo_auth_url()
-                callback_url = f"{base_url}?{urlencode(result_data)}"
+                callback_url = f"{base_url}?{urlencode(result_data, doseq=True)}"
                 print(f"ℹ️ {self.account_name}: Callback URL: {callback_url}")
                 try:
                     # 将 Camoufox 格式的 cookies 转换为 curl_cffi 格式
