@@ -6,13 +6,14 @@
 import json
 import os
 from dataclasses import dataclass, field
-from typing import Callable, Dict, Generator, List, Literal
+from typing import Callable, Dict, Generator, AsyncGenerator, List, Literal
 
 from utils.get_path import get_aiai_li_check_in_path
 from utils.get_check_in_status import newapi_check_in_status
 from utils.get_cdk import (
     get_runawaytime_cdk,
     get_x666_cdk,
+    get_b4u_cdk,
 )
 
 
@@ -20,7 +21,7 @@ from utils.get_cdk import (
 # 实际的 AccountConfig 类在后面定义
 # 定义 CDK 获取函数的类型：接收 AccountConfig 参数，返回 Generator[str, None, None]
 CdkGetterFunc = Callable[["AccountConfig"], Generator[str, None, None]]
-
+AsyncCdkGetterFunc = Callable[["AccountConfig"], AsyncGenerator[str, None]]
 
 # 签到状态查询函数类型：接收 ProviderConfig 和 AccountConfig 参数，返回 bool（今日是否已签到）
 # 函数签名: (provider_config, account_config, cookies, headers) -> bool
@@ -45,12 +46,14 @@ class ProviderConfig:
     check_in_status: CheckInStatusFunc | None = None  # 签到状态查询函数，返回 bool
     user_info_path: str = "/api/user/self"
     topup_path: str | None = "/api/user/topup"
-    get_cdk: CdkGetterFunc | None = None
+    get_cdk: CdkGetterFunc | AsyncCdkGetterFunc | None = None
     api_user_key: str = "new-api-user"
     github_client_id: str | None = None
-    github_auth_path: str = "/api/oauth/github",
+    github_auth_path: str = "/api/oauth/github"
+    github_auth_redirect_path: str = "/oauth/**"  # OAuth 回调路径匹配模式，支持通配符
     linuxdo_client_id: str | None = None
-    linuxdo_auth_path: str = "/api/oauth/lunuxdo",
+    linuxdo_auth_path: str = "/api/oauth/linuxdo"
+    linuxdo_auth_redirect_path: str = "/oauth/**"  # OAuth 回调路径匹配模式，支持通配符
     aliyun_captcha: bool = False
     bypass_method: Literal["waf_cookies", "cf_clearance"] | None = None
 
@@ -76,8 +79,10 @@ class ProviderConfig:
             api_user_key=data.get("api_user_key", "new-api-user"),
             github_client_id=data.get("github_client_id"),
             github_auth_path=data.get("github_auth_path", "/api/oauth/github"),
+            github_auth_redirect_path=data.get("github_auth_redirect_path", "/oauth/**"),
             linuxdo_client_id=data.get("linuxdo_client_id"),
             linuxdo_auth_path=data.get("linuxdo_auth_path", "/api/oauth/linuxdo"),
+            linuxdo_auth_redirect_path=data.get("linuxdo_auth_redirect_path", "/oauth/**"),
             aliyun_captcha=data.get("aliyun_captcha", False),
             bypass_method=data.get("bypass_method"),
         )
@@ -151,10 +156,26 @@ class ProviderConfig:
     def get_github_auth_url(self) -> str:
         """获取 GitHub 认证 URL"""
         return f"{self.origin}{self.github_auth_path}"
-    
+
+    def get_github_auth_redirect_pattern(self) -> str:
+        """获取 GitHub OAuth 回调 URL 匹配模式
+        
+        返回用于 page.wait_for_url() 的匹配模式，支持通配符 **
+        例如: "**https://example.com/oauth/**" 或 "**https://example.com/oauth-redirect.html**"
+        """
+        return f"**{self.origin}{self.github_auth_redirect_path}"
+
     def get_linuxdo_auth_url(self) -> str:
         """获取 LinuxDo 认证 URL"""
         return f"{self.origin}{self.linuxdo_auth_path}"
+
+    def get_linuxdo_auth_redirect_pattern(self) -> str:
+        """获取 LinuxDo OAuth 回调 URL 匹配模式
+        
+        返回用于 page.wait_for_url() 的匹配模式，支持通配符 **
+        例如: "**https://example.com/oauth/**" 或 "**https://example.com/oauth-redirect.html**"
+        """
+        return f"**{self.origin}{self.linuxdo_auth_redirect_path}"
 
 @dataclass
 class AccountConfig:
@@ -388,7 +409,7 @@ class AppConfig:
                 linuxdo_client_id="AHjK9O3FfbCXKpF6VXGBC60K21yJ2fYk",
                 linuxdo_auth_path="/api/oauth/linuxdo",
                 aliyun_captcha=False,
-                bypass_method=None,
+                bypass_method="cf_clearance",
             ),
             "x666": ProviderConfig(
                 name="x666",
@@ -461,8 +482,10 @@ class AppConfig:
                 api_user_key="new-api-user",
                 github_client_id=None,
                 github_auth_path="/api/oauth/github",
+                github_auth_redirect_path="/oauth-redirect.html**",  # 使用 oauth-redirect.html 页面
                 linuxdo_client_id="E2eaCQVl9iecd4aJBeTKedXfeKiJpSPF",
                 linuxdo_auth_path="/api/oauth/linuxdo",
+                linuxdo_auth_redirect_path="/oauth-redirect.html**",  # 使用 oauth-redirect.html 页面
                 aliyun_captcha=False,
                 bypass_method="cf_clearance",
             ),
@@ -483,7 +506,26 @@ class AppConfig:
                 linuxdo_client_id="qVGkHnU8fLzJVEMgHCuNUCYifUQwePWn",
                 linuxdo_auth_path="/api/oauth/linuxdo",
                 aliyun_captcha=False,
-                bypass_method=None,
+                bypass_method="cf_clearance",
+            ),
+            "b4u": ProviderConfig(
+                name="b4u",
+                origin="https://b4u.qzz.io",
+                login_path="/login",
+                status_path="/api/status",
+                auth_state_path="/api/oauth/state",
+                check_in_path=None,  # 无签到接口，通过 luckydraw 获取 CDK 并 topup
+                check_in_status=None,
+                user_info_path="/api/user/self",
+                topup_path="/api/user/topup",
+                get_cdk=get_b4u_cdk,  # 通过 tw.b4u.qzz.io/luckydraw 抽奖获取 CDK
+                api_user_key="new-api-user",
+                github_client_id=None,
+                github_auth_path="/api/oauth/github",
+                linuxdo_client_id="Cf3PtT3ecj4kzJrMvOGM48FrHFKYXusb",
+                linuxdo_auth_path="/api/oauth/linuxdo",
+                aliyun_captcha=False,
+                bypass_method="cf_clearance",
             ),
         }
 
@@ -512,7 +554,7 @@ class AppConfig:
             except Exception as e:
                 print(f"⚠️ Error loading {providers_env}: {e}, using default configuration only")
         else:
-            print(f"❌ {providers_env} environment variable not found")
+            print(f"⚠️ {providers_env} environment variable not found, using default configuration only")
 
         return providers
 
@@ -531,7 +573,7 @@ class AppConfig:
         accounts_str = os.getenv(accounts_env)
         
         if not accounts_str:
-            print(f"❌ {accounts_env} environment variable not found")
+            print(f"⚠️ {accounts_env} environment variable not found")
             return []
 
         try:
