@@ -6,13 +6,14 @@
 import json
 import os
 from dataclasses import dataclass, field
-from typing import Callable, Dict, Generator, List, Literal
+from typing import Callable, Dict, Generator, AsyncGenerator, List, Literal
 
 from utils.get_path import get_aiai_li_check_in_path
 from utils.get_check_in_status import newapi_check_in_status
 from utils.get_cdk import (
     get_runawaytime_cdk,
     get_x666_cdk,
+    get_b4u_cdk,
 )
 
 
@@ -20,7 +21,7 @@ from utils.get_cdk import (
 # 实际的 AccountConfig 类在后面定义
 # 定义 CDK 获取函数的类型：接收 AccountConfig 参数，返回 Generator[str, None, None]
 CdkGetterFunc = Callable[["AccountConfig"], Generator[str, None, None]]
-
+AsyncCdkGetterFunc = Callable[["AccountConfig"], AsyncGenerator[str, None]]
 
 # 签到状态查询函数类型：接收 ProviderConfig 和 AccountConfig 参数，返回 bool（今日是否已签到）
 # 函数签名: (provider_config, account_config, cookies, headers) -> bool
@@ -45,7 +46,7 @@ class ProviderConfig:
     check_in_status: CheckInStatusFunc | None = None  # 签到状态查询函数，返回 bool
     user_info_path: str = "/api/user/self"
     topup_path: str | None = "/api/user/topup"
-    get_cdk: CdkGetterFunc | None = None
+    get_cdk: CdkGetterFunc | AsyncCdkGetterFunc | None = None
     api_user_key: str = "new-api-user"
     github_client_id: str | None = None
     github_auth_path: str = "/api/oauth/github"
@@ -503,6 +504,25 @@ class AppConfig:
                 github_client_id=None,
                 github_auth_path="/api/oauth/github",
                 linuxdo_client_id="qVGkHnU8fLzJVEMgHCuNUCYifUQwePWn",
+                linuxdo_auth_path="/api/oauth/linuxdo",
+                aliyun_captcha=False,
+                bypass_method="cf_clearance",
+            ),
+            "b4u": ProviderConfig(
+                name="b4u",
+                origin="https://b4u.qzz.io",
+                login_path="/login",
+                status_path="/api/status",
+                auth_state_path="/api/oauth/state",
+                check_in_path=None,  # 无签到接口，通过 luckydraw 获取 CDK 并 topup
+                check_in_status=None,
+                user_info_path="/api/user/self",
+                topup_path="/api/user/topup",
+                get_cdk=get_b4u_cdk,  # 通过 tw.b4u.qzz.io/luckydraw 抽奖获取 CDK
+                api_user_key="new-api-user",
+                github_client_id=None,
+                github_auth_path="/api/oauth/github",
+                linuxdo_client_id="Cf3PtT3ecj4kzJrMvOGM48FrHFKYXusb",
                 linuxdo_auth_path="/api/oauth/linuxdo",
                 aliyun_captcha=False,
                 bypass_method="cf_clearance",
