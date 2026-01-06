@@ -593,6 +593,7 @@ class AppConfig:
         accounts_str = os.getenv(env_name)
         
         if not accounts_str:
+            print(f"⚠️ {env_name} No {provider_name} account(s) from {env_name}")
             return []
 
         try:
@@ -739,6 +740,13 @@ class AppConfig:
                     print(f"⚠️ Account {i + 1} configuration format is incorrect, skipping")
                     continue
 
+                # 如果有 name 字段,确保它不是空字符串
+                if "name" in account and not account["name"]:
+                    print(f"⚠️ Account {i + 1} name field cannot be empty, skipping")
+                    continue
+
+                account_name = account.get("name") or f"Account {i + 1}"
+
                 # 检查配置键是否存在
                 has_linux_do = "linux.do" in account
                 has_github = "github" in account
@@ -754,7 +762,7 @@ class AppConfig:
                         i,
                     )
                     if linux_do_accounts is None:
-                        print(f"⚠️ Account {i + 1} linux.do configuration is invalid, skipping")
+                        print(f"⚠️ {account_name} linux.do configuration is invalid, skipping")
                         continue
 
                 # 解析 github 配置（支持 bool、单个账号、多个账号）
@@ -767,7 +775,7 @@ class AppConfig:
                         i,
                     )
                     if github_accounts is None:
-                        print(f"⚠️ Account {i + 1} github configuration is invalid, skipping")
+                        print(f"⚠️ {account_name} github configuration is invalid, skipping")
                         continue
 
                 # 验证 cookies 配置
@@ -779,9 +787,9 @@ class AppConfig:
                     if cookies_config and api_user:
                         valid_cookies = True
                     elif cookies_config and not api_user:
-                        print(f"⚠️ Account {i + 1} with cookies must have api_user field")
+                        print(f"⚠️ {account_name} with cookies must have api_user field")
                     elif not cookies_config:
-                        print(f"⚠️ Account {i + 1} cookies is empty")
+                        print(f"⚠️ {account_name} cookies is empty")
 
                 # 检查解析后是否至少有一个有效的认证方式
                 has_valid_linux_do = linux_do_accounts is not None and len(linux_do_accounts) > 0
@@ -789,12 +797,7 @@ class AppConfig:
                 has_valid_cookies = valid_cookies
 
                 if not has_valid_linux_do and not has_valid_github and not has_valid_cookies:
-                    print(f"⚠️ Account {i + 1} must have at least one valid authentication method (linux.do, github, or cookies), skipping")
-                    continue
-
-                # 如果有 name 字段,确保它不是空字符串
-                if "name" in account and not account["name"]:
-                    print(f"⚠️ Account {i + 1} name field cannot be empty, skipping")
+                    print(f"⚠️ {account_name} must have at least one valid authentication method (linux.do, github, or cookies), skipping")
                     continue
 
                 # 创建 AccountConfig，传入解析后的 OAuth 账号列表

@@ -397,22 +397,22 @@ class LinuxDoReadPosts:
 
 
 def load_linuxdo_accounts() -> list[dict]:
-    """从 ACCOUNTS_LINUX_DO 环境变量加载 Linux.do 账号
+    """从 ACCOUNTS 环境变量加载 Linux.do 账号
 
     Returns:
         包含 linux.do 账号信息的列表，每个元素为:
         {"username": str, "password": str}
     """
-    accounts_str = os.getenv("ACCOUNTS_LINUX_DO")
+    accounts_str = os.getenv("ACCOUNTS")
     if not accounts_str:
-        print("❌ ACCOUNTS_LINUX_DO environment variable not found")
+        print("❌ ACCOUNTS environment variable not found")
         return []
 
     try:
         accounts_data = json.loads(accounts_str)
 
         if not isinstance(accounts_data, list):
-            print("❌ ACCOUNTS_LINUX_DO must be a JSON array")
+            print("❌ ACCOUNTS must be a JSON array")
             return []
 
         linuxdo_accounts = []
@@ -420,14 +420,14 @@ def load_linuxdo_accounts() -> list[dict]:
 
         for i, account in enumerate(accounts_data):
             if not isinstance(account, dict):
-                print(f"⚠️ ACCOUNTS_LINUX_DO[{i}] must be a dictionary, skipping")
+                print(f"⚠️ ACCOUNTS[{i}] must be a dictionary, skipping")
                 continue
 
             username = account.get("username")
             password = account.get("password")
 
             if not username or not password:
-                print(f"⚠️ ACCOUNTS_LINUX_DO[{i}] missing username or password, skipping")
+                print(f"⚠️ ACCOUNTS[{i}] missing username or password, skipping")
                 continue
 
             # 根据 username 去重
@@ -446,10 +446,10 @@ def load_linuxdo_accounts() -> list[dict]:
         return linuxdo_accounts
 
     except json.JSONDecodeError as e:
-        print(f"❌ Failed to parse ACCOUNTS_LINUX_DO: {e}")
+        print(f"❌ Failed to parse ACCOUNTS: {e}")
         return []
     except Exception as e:
-        print(f"❌ Error loading ACCOUNTS_LINUX_DO: {e}")
+        print(f"❌ Error loading ACCOUNTS: {e}")
         return []
 
 
