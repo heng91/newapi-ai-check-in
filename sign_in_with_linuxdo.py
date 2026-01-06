@@ -137,6 +137,23 @@ class LinuxDoSignIn:
 
                             await page.goto("https://linux.do/login", wait_until="domcontentloaded")
 
+                            # 检查是否在 Cloudflare 验证页面
+                            page_title = await page.title()
+                            page_content = await page.content()
+
+                            if "Just a moment" in page_title or "Checking your browser" in page_content:
+                                print(f"ℹ️ {self.account_name}: Cloudflare challenge detected, auto-solving...")
+                                try:
+                                    await solver.solve_captcha(
+                                        captcha_container=page,
+                                        captcha_type=CaptchaType.CLOUDFLARE_INTERSTITIAL
+                                    )
+                                    print(f"✅ {self.account_name}: Cloudflare challenge auto-solved")
+                                    await page.wait_for_timeout(10000)
+                                except Exception as solve_err:
+                                    print(f"⚠️ {self.account_name}: Auto-solve failed: {solve_err}")
+                            
+
                             await page.fill("#login-account-name", self.username)
                             await page.wait_for_timeout(2000)
                             await page.fill("#login-account-password", self.password)
