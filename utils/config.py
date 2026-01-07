@@ -597,6 +597,25 @@ class AppConfig:
                 aliyun_captcha=False,
                 bypass_method=None,
             ),
+            "thatapi": ProviderConfig(
+                name="thatapi",
+                origin="https://gyapi.zxiaoruan.cn",
+                login_path="/login",
+                status_path="/api/status",
+                auth_state_path="/api/oauth/state",
+                check_in_path="/api/user/checkin",  # 标准 newapi checkin 接口
+                check_in_status=True,  # 使用标准签到状态查询
+                user_info_path="/api/user/self",
+                topup_path="/api/user/topup",
+                get_cdk=None,
+                api_user_key="new-api-user",
+                github_client_id=None,
+                github_auth_path="/api/oauth/github",
+                linuxdo_client_id="doAqU5TVU6L7sXudST9MQ102aaJObESS",
+                linuxdo_auth_path="/api/oauth/linuxdo",
+                aliyun_captcha=False,
+                bypass_method=None,
+            ),
         }
 
         # 尝试从环境变量加载自定义 providers
