@@ -549,6 +549,44 @@ class AppConfig:
                 aliyun_captcha=False,
                 bypass_method="cf_clearance",
             ),
+            "lightllm": ProviderConfig(
+                name="lightllm",
+                origin="https://lightllm.online",
+                login_path="/login",
+                status_path="/api/status",
+                auth_state_path="/api/oauth/state",
+                check_in_path="/api/user/checkin",  # 标准 newapi checkin 接口
+                check_in_status=newapi_check_in_status,  # 签到状态查询函数，返回 bool
+                user_info_path="/api/user/self",
+                topup_path="/api/user/topup",
+                get_cdk=None,
+                api_user_key="new-api-user",
+                github_client_id=None,
+                github_auth_path="/api/oauth/github",
+                linuxdo_client_id="i7YfDNeJPx8Rbjx8JpD10YgQ2TVElVA4",
+                linuxdo_auth_path="/api/oauth/linuxdo",
+                aliyun_captcha=False,
+                bypass_method=None,
+            ),
+            "takeapi": ProviderConfig(
+                name="takeapi",
+                origin="https://codex.661118.xyz",
+                login_path="/login",
+                status_path="/api/status",
+                auth_state_path="/api/oauth/state",
+                check_in_path="/api/user/checkin",  # 标准 newapi checkin 接口
+                check_in_status=newapi_check_in_status,  # 签到状态查询函数，返回 bool
+                user_info_path="/api/user/self",
+                topup_path="/api/user/topup",
+                get_cdk=None,
+                api_user_key="new-api-user",
+                github_client_id=None,
+                github_auth_path="/api/oauth/github",
+                linuxdo_client_id="CeGKoyvGjd9JuUYOz57qbOqcM3ur3Y69",
+                linuxdo_auth_path="/api/oauth/linuxdo",
+                aliyun_captcha=False,
+                bypass_method=None,
+            ),
         }
 
         # 尝试从环境变量加载自定义 providers
