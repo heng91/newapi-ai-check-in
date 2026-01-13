@@ -637,6 +637,44 @@ class AppConfig:
                 aliyun_captcha=False,
                 bypass_method=None,
             ),
+            "taizi": ProviderConfig(
+                name="taizi",
+                origin="https://taizi.api.51yp.de5.net",
+                login_path="/login",
+                status_path="/api/status",
+                auth_state_path="/api/oauth/state",
+                check_in_path="/api/user/checkin",  # 标准 newapi checkin 接口
+                check_in_status=True,  # 使用标准签到状态查询
+                user_info_path="/api/user/self",
+                topup_path="/api/user/topup",
+                get_cdk=None,
+                api_user_key="new-api-user",
+                github_client_id=None,
+                github_auth_path="/api/oauth/github",
+                linuxdo_client_id="ed4CnVPkYpQZSLFdha2pHFtHJOmHQ4bU",
+                linuxdo_auth_path="/api/oauth/linuxdo",
+                aliyun_captcha=False,
+                bypass_method=None,
+            ),
+            "openai-test": ProviderConfig(
+                name="openai-test",
+                origin="https://openai.api-test.us.ci",
+                login_path="/login",
+                status_path="/api/status",
+                auth_state_path="/api/oauth/state",
+                check_in_path="/api/user/checkin",  # 标准 newapi checkin 接口
+                check_in_status=True,  # 使用标准签到状态查询
+                user_info_path="/api/user/self",
+                topup_path="/api/user/topup",
+                get_cdk=None,
+                api_user_key="new-api-user",
+                github_client_id=None,
+                github_auth_path="/api/oauth/github",
+                linuxdo_client_id="65Lj7gYXHoSAVDDUq6Plb11thoqAV1t7",
+                linuxdo_auth_path="/api/oauth/linuxdo",
+                aliyun_captcha=False,
+                bypass_method=None,
+            ),
         }
 
         # 尝试从环境变量加载自定义 providers
