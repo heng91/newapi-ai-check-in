@@ -271,6 +271,11 @@ Affs:
 
 - `SERVERPUSHKEY`: Server 酱的 SendKey
 
+### Telegram 机器人
+
+- `TELEGRAM_BOT_TOKEN`: Telegram 机器人的 Token
+- `TELEGRAM_CHAT_ID`: 接收消息的 Chat ID
+
 配置步骤：
 
 1. 在仓库的 Settings -> Environments -> production -> Environment secrets 中添加上述环境变量
