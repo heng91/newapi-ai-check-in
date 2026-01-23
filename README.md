@@ -276,6 +276,9 @@ Affs:
 - `TELEGRAM_BOT_TOKEN`: Telegram 机器人的 Token
 - `TELEGRAM_CHAT_ID`: 接收消息的 Chat ID
 
+## 防止Action因长时间无活动而自动禁止
+- `ACTIONS_TRIGGER_PAT`: 在Github Settings -> Developer Settings -> Personal access tokens -> Tokens(classic) 中新建一个包含repo和workflow的令牌
+
 配置步骤：
 
 1. 在仓库的 Settings -> Environments -> production -> Environment secrets 中添加上述环境变量
