@@ -606,7 +606,7 @@ class AppConfig:
             ),
             "hotaru": ProviderConfig(
                 name="hotaru",
-                origin="https://api.hotaruapi.top",
+                origin="https://hotaruapi.com",
                 login_path="/login",
                 status_path="/api/status",
                 auth_state_path="/api/oauth/state",
@@ -739,7 +739,7 @@ class AppConfig:
             ),
             "taizi": ProviderConfig(
                 name="taizi",
-                origin="https://taizi.api.51yp.de5.net",
+                origin="https://api.codeme.me/",
                 login_path="/login",
                 status_path="/api/status",
                 auth_state_path="/api/oauth/state",
