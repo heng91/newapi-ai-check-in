@@ -4,17 +4,12 @@
 
 Affs:
 - [AnyRouter](https://anyrouter.top/register?aff=wJrb)
-- [AgentRouter](https://agentrouter.org/register?aff=wDU2)
 - [WONG](https://wzw.pp.ua/register?aff=N6Q9)
 - [薄荷 API](https://x666.me/register?aff=dgzt)
 - [Huan API](https://ai.huan666.de/register?aff=qEnU)
-- [我爱996](https://529961.com/register?aff=HV76)
-- [莹のAPI](https://api.wpgzs.top/register?aff=56zr)
 - [KFC API](https://kfc-api.sxxe.net/register?aff=xPnf)
-- [B4U](https://b4u.qzz.io/register?aff=2NeT)
-- [Elysiver](https://elysiver.h-e.top/register?aff=5JsA)
 - [HotaruApi](https://hotaruapi.com/register?aff=q6xq)
-- [Neb](https://ai.zzhdsgsss.xyz/register?aff=tXKw)
+- [Elysiver](https://elysiver.h-e.top/register?aff=5JsA)
 
 其它使用 `newapi.ai` 功能相似, 可自定义环境变量 `PROVIDERS` 支持或 `PR` 到仓库。
 
