@@ -10,8 +10,11 @@ CDK 获取模块
 """
 from __future__ import annotations
 
+import base64
 import hashlib
+import json
 import os
+import time
 from typing import TYPE_CHECKING, Generator, AsyncGenerator
 from urllib.parse import urlparse, parse_qs
 
@@ -248,6 +251,31 @@ async def _get_x666_user_token(
     Returns:
         userToken 字符串，失败返回 None
     """
+
+    def is_jwt_valid(token: str) -> bool:
+        """验证 JWT token 是否有效（未过期）"""
+        try:
+            parts = token.split('.')
+            if len(parts) != 3:
+                return False
+
+            # 解码 payload（添加 padding）
+            payload_b64 = parts[1]
+            padding = 4 - len(payload_b64) % 4
+            if padding != 4:
+                payload_b64 += '=' * padding
+
+            payload = json.loads(base64.b64decode(payload_b64))
+            exp = payload.get('exp')
+
+            if not exp:
+                return False
+
+            # 检查是否过期（exp 是秒级时间戳）
+            return exp > time.time()
+        except Exception:
+            return False
+
     username_hash = hashlib.sha256(username.encode()).hexdigest()[:8]
     cache_file_path = f"storage-states/x666_up_{username_hash}.json"
 
@@ -285,9 +313,13 @@ async def _get_x666_user_token(
                 # 检查 localStorage 中是否已有 userToken（缓存有效时）
                 existing_token = await page.evaluate("() => localStorage.getItem('userToken')")
                 if existing_token:
-                    print(f"✅ {account_name}: Found existing userToken in localStorage (from cache)")
-                    await context.storage_state(path=cache_file_path)
-                    return existing_token
+                    print(f"ℹ️ {account_name}: Found existing userToken in localStorage, validating...")
+                    if is_jwt_valid(existing_token):
+                        print(f"✅ {account_name}: Cached userToken is valid")
+                        await context.storage_state(path=cache_file_path)
+                        return existing_token
+                    else:
+                        print(f"⚠️ {account_name}: Cached userToken expired, need to re-login")
 
                 # Step 2: 调用 /api/auth/login 获取 auth_url
                 print(f"ℹ️ {account_name}: No cached token, fetching auth_url from /api/auth/login")
