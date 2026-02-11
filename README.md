@@ -118,8 +118,8 @@ Affs:
       "proxy": {
         "server": "http://username:password@proxy.example.com:8080"
       },
-      //provider: x666 可选配置（可自动通过 linux.do 登录获取）
-      ~~"access_token": "来自 https://qd.x666.me/",~~
+      //provider: x666 可选配置（自动通过 linux.do 登录获取）
+      // "access_token": "来自 https://qd.x666.me/",  // 已废弃，会自动获取
       "get_cdk_cookies": {
         // provider: runawaytime 必须配置
         "session": "来自 https://fuli.hxi.me/",
