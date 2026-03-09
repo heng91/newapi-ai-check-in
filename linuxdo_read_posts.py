@@ -284,11 +284,13 @@ class LinuxDoReadPosts:
                     await page.wait_for_timeout(random.randint(1000, 2000))
                 else:
                     print(f"⚠️ {self.masked_username}: Topic {current_topic_id} not found or invalid, skipping...")
+                    await take_screenshot(page, f"topic_not_found_or_invalid_{current_topic_id}", self.username)
                     consecutive_invalid_count += 1
                     jump_invalid_count += 1
 
             except Exception as e:
                 print(f"⚠️ {self.masked_username}: Error reading topic {current_topic_id}: {e}")
+                await take_screenshot(page, f"topic_read_error_{current_topic_id}", self.username)
                 consecutive_invalid_count += 1
                 jump_invalid_count += 1
 
