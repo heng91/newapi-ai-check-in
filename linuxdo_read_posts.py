@@ -214,6 +214,8 @@ class LinuxDoReadPosts:
         jump_invalid_count = 0  # 连续无效帖子计数，用于决定是否跳跃
 
         while read_count < max_posts:
+            await page.wait_for_timeout(random.randint(1000, 3000))
+
             if consecutive_invalid_count > 200:
                 print(
                     f"⚠️ {self.masked_username}: Consecutive invalid topics exceeded 200, stopping at {current_topic_id}"
