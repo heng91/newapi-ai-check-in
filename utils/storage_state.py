@@ -14,11 +14,17 @@ def ensure_storage_state_from_env(
     env_name: str = "STORATE_STATES",
 ) -> bool:
     """当本地缓存不存在时，从环境变量恢复 storage state 文件。"""
-    if not cache_file_path or os.path.exists(cache_file_path):
+    if not cache_file_path:
+        print(f"⚠️ {account_name}: Skip restoring storage state because cache_file_path is empty")
+        return False
+
+    if os.path.exists(cache_file_path):
+        print(f"⚠️ {account_name}: Skip restoring storage state because cache file already exists: {cache_file_path}")
         return False
 
     storage_states_str = os.getenv(env_name, "")
     if not storage_states_str:
+        print(f"⚠️ {account_name}: Skip restoring storage state because {env_name} is empty or not set")
         return False
 
     try:
@@ -33,6 +39,7 @@ def ensure_storage_state_from_env(
 
     storage_state_data = storage_states.get(username)
     if storage_state_data is None:
+        print(f"⚠️ {account_name}: Skip restoring storage state because '{username}' was not found in {env_name}")
         return False
 
     if isinstance(storage_state_data, str):
