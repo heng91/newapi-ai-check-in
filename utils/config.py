@@ -562,25 +562,25 @@ class AppConfig:
                 aliyun_captcha=False,
                 bypass_method=None,
             ),
-            "neb": ProviderConfig(
-                name="neb",
-                origin="https://ai.zzhdsgsss.xyz",
-                login_path="/login",
-                status_path="/api/status",
-                auth_state_path="/api/oauth/state",
-                check_in_path="/api/user/checkin",  # 标准 newapi checkin 接口
-                check_in_status=True,  # 使用标准签到状态查询
-                user_info_path="/api/user/self",
-                topup_path="/api/user/topup",
-                get_cdk=None,
-                api_user_key="new-api-user",
-                github_client_id=None,
-                github_auth_path="/api/oauth/github",
-                linuxdo_client_id="ZflEL6xK90fbCcuWpHEKAcofgK8B5msn",
-                linuxdo_auth_path="/api/oauth/linuxdo",
-                aliyun_captcha=False,
-                bypass_method=None,
-            ),
+            # "neb": ProviderConfig(
+            #     name="neb",
+            #     origin="https://ai.zzhdsgsss.xyz",
+            #     login_path="/login",
+            #     status_path="/api/status",
+            #     auth_state_path="/api/oauth/state",
+            #     check_in_path="/api/user/checkin",  # 标准 newapi checkin 接口
+            #     check_in_status=True,  # 使用标准签到状态查询
+            #     user_info_path="/api/user/self",
+            #     topup_path="/api/user/topup",
+            #     get_cdk=None,
+            #     api_user_key="new-api-user",
+            #     github_client_id=None,
+            #     github_auth_path="/api/oauth/github",
+            #     linuxdo_client_id="ZflEL6xK90fbCcuWpHEKAcofgK8B5msn",
+            #     linuxdo_auth_path="/api/oauth/linuxdo",
+            #     aliyun_captcha=False,
+            #     bypass_method=None,
+            # ),
             "elysiver": ProviderConfig(
                 name="elysiver",
                 origin="https://elysiver.h-e.top",
@@ -737,7 +737,7 @@ class AppConfig:
             ),
             "openai-test": ProviderConfig(
                 name="openai-test",
-                origin="https://openai.api-test.us.ci",
+                origin="https://new-api.publicvm.com",
                 login_path="/login",
                 status_path="/api/status",
                 auth_state_path="/api/oauth/state",
