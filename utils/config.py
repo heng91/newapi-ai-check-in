@@ -749,7 +749,7 @@ class AppConfig:
                 api_user_key="new-api-user",
                 github_client_id=None,
                 github_auth_path="/api/oauth/github",
-                linuxdo_client_id="65Lj7gYXHoSAVDDUq6Plb11thoqAV1t7",
+                linuxdo_client_id="l7O9zX1vWfka90bQunh7A8BulvEVTB1Y",
                 linuxdo_auth_path="/api/oauth/linuxdo",
                 aliyun_captcha=False,
                 bypass_method=None,
