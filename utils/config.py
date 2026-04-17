@@ -737,7 +737,7 @@ class AppConfig:
             ),
             "openai-test": ProviderConfig(
                 name="openai-test",
-                origin="https://new-api.publicvm.com",
+                origin="https://new-api.abrdns.com",
                 login_path="/login",
                 status_path="/api/status",
                 auth_state_path="/api/oauth/state",
