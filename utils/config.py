@@ -12,7 +12,7 @@ from utils.get_check_in_status import newapi_check_in_status
 from utils.get_cdk import (
     get_runawaytime_cdk,
     get_x666_cdk,
-    get_b4u_cdk,
+    # get_b4u_cdk,
 )
 
 
@@ -640,25 +640,6 @@ class AppConfig:
             #     aliyun_captcha=False,
             #     bypass_method="cf_clearance",
             # ),
-            # "lightllm": ProviderConfig(
-            #     name="lightllm",
-            #     origin="https://lightllm.online",
-            #     login_path="/login",
-            #     status_path="/api/status",
-            #     auth_state_path="/api/oauth/state",
-            #     check_in_path="/api/user/checkin",  # 标准 newapi checkin 接口
-            #     check_in_status=True,  # 使用标准签到状态查询
-            #     user_info_path="/api/user/self",
-            #     topup_path="/api/user/topup",
-            #     get_cdk=None,
-            #     api_user_key="new-api-user",
-            #     github_client_id=None,
-            #     github_auth_path="/api/oauth/github",
-            #     linuxdo_client_id="i7YfDNeJPx8Rbjx8JpD10YgQ2TVElVA4",
-            #     linuxdo_auth_path="/api/oauth/linuxdo",
-            #     aliyun_captcha=False,
-            #     bypass_method=None,
-            # ),
             "takeapi": ProviderConfig(
                 name="takeapi",
                 origin="https://codex.661118.xyz",
@@ -731,25 +712,6 @@ class AppConfig:
                 github_client_id=None,
                 github_auth_path="/api/oauth/github",
                 linuxdo_client_id="XNJfOdoSeXkcx80mDydoheJ0nZS4tjIf",
-                linuxdo_auth_path="/api/oauth/linuxdo",
-                aliyun_captcha=False,
-                bypass_method=None,
-            ),
-            "openai-test": ProviderConfig(
-                name="openai-test",
-                origin="https://new-api.abrdns.com",
-                login_path="/login",
-                status_path="/api/status",
-                auth_state_path="/api/oauth/state",
-                check_in_path="/api/user/checkin",  # 标准 newapi checkin 接口
-                check_in_status=True,  # 使用标准签到状态查询
-                user_info_path="/api/user/self",
-                topup_path="/api/user/topup",
-                get_cdk=None,
-                api_user_key="new-api-user",
-                github_client_id=None,
-                github_auth_path="/api/oauth/github",
-                linuxdo_client_id="l7O9zX1vWfka90bQunh7A8BulvEVTB1Y",
                 linuxdo_auth_path="/api/oauth/linuxdo",
                 aliyun_captcha=False,
                 bypass_method=None,
